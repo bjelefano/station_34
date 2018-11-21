@@ -6,49 +6,65 @@ module InputModule(toggle,push,mic,mouse,clock,reset,out);
 	input clock;
 	input reset;
 	
-	output reg [63:0] out;
+	output [63:0] out;
 	
-	reg write, input1, input2, input3, input4;
-	reg [2:0] inputType;
+	wire [2:0] in;
+	wire clk;
 	
-	StringRegister InputString(inputType,clock,reset,out);
+	RateDivider doubleTime(26'd1,clock,reset,clk);
+	
+	InputType IOType(toggle,push,mic,mouse,clock,reset,in);
+	StringRegister InputString(in,clock,reset,out);
+	
+endmodule
+
+module InputType(toggle,push,mic,mouse,clock,reset,out);
+	input toggle;
+	input push;
+	input mic;
+	input mouse;
+	input clock;
+	input reset;
+	
+	output reg [2:0] out;
+	
+	wire input1, input2, input3, input4;
 	
 	InputListener ToggleSwitchListener(toggle,clock,reset,input1);
 	InputListener PushSwitchListener(push,clock,reset,input2);
 	InputListener MicrophoneListener(mic,clock,reset,input3);
 	InputListener MouseListener(mouse,clock,reset,input4);
 	
-	always @(input1,input2,input3,input4,reset)
+	always @(clock)
 	begin
 		if (~reset)
 			begin
-				inputType <= 3'd0;
+				out <= 3'd0;
 			end
 		else
 			begin
 				if (input1)
-					inputType <= 3'd1;
+					out <= 3'd1;
 				else if (input2)
-					inputType <= 3'd2;
+					out <= 3'd2;
 				else if (input3)
-					inputType <= 3'd3;
+					out <= 3'd3;
 				else if (input4)
-					inputType <= 3'd4;
+					out <= 3'd4;
 				else 
-					inputType <= 3'd0;
+					out <= 3'd0;
 			end
 	end
 endmodule
 
 module StringRegister(in,clock,reset,out);
 	input [2:0] in;
-	input write;
 	input clock;
 	input reset;
 	
 	output reg [63:0] out;
 	
-	always @(posedge clock)
+	always @(negedge clock)
 	begin
 		if (~reset)
 			out <= 64'd0;
@@ -58,9 +74,9 @@ module StringRegister(in,clock,reset,out);
 			else if (in == 3'd2)
 				out <= (out << 2'd3) + 3'b110;
 			else if (in == 3'd3)
-				out <= (out << 2'd4) + 4'b1110;
+				out <= (out << 3'd4) + 4'b1110;
 			else if (in == 3'd4)
-				out <= (out << 2'd5) + 5'b11110;
+				out <= (out << 3'd5) + 5'b11110;
 		end
 	end
 endmodule
@@ -70,24 +86,34 @@ module InputListener(toggle,clock,reset,out);
 	input clock;
 	input reset;
 	
-	wire pulse;
-   assign pulse = toggle & ~toggle;
+	output reg out;
 	
-	always @(pulse)
+	reg mem;
+
+	always @(clock)
 	begin
-		if (~reset | ~pulse)
+		if (~reset)
+			begin
+				out <= 1'b0;
+				mem <= 1'b0;
+			end
+		else if (mem != toggle)
+			begin
+				out <= toggle;
+				mem <= toggle;
+			end
+		else 
 			out <= 1'b0;
-		else
-			out <= 1'b1;
 	end
 endmodule
 
 module AddCounter(val,increase,clock,reset,out);
-	input decrement;
+	input [7:0] val;
+	input increase;
 	input clock;
 	input reset;
 	
-	output reg out;
+	output reg [7:0] out;
 	
 	always @(posedge clock)
 	begin
@@ -102,11 +128,12 @@ module AddCounter(val,increase,clock,reset,out);
 endmodule
 
 module SubCounter(val,decrease,clock,reset,out);
-	input decrement;
+	input [7:0] val;
+	input decrease;
 	input clock;
 	input reset;
 	
-	output reg out;
+	output reg [7:0] out;
 	
 	always @(posedge clock)
 	begin
@@ -118,6 +145,30 @@ module SubCounter(val,decrease,clock,reset,out);
 					out <= out - 1'b1;
 			end
 	end
+endmodule
+
+module RateDivider(in,clockIn,reset,clockOut);
+	input [25:0] in;
+	input clockIn;
+	input reset;
+	output clockOut;
+
+	reg [25:0] q;
+	
+	always @(posedge clockIn)
+	begin
+		if (reset == 1'b0) 
+			q <= 26'd0;
+		else
+			begin
+				if (|q == 1'b0)
+					q <= in;
+				else
+					q <= q - 1'b1;
+			end
+	end
+	
+	assign clock_out = (|q == 1'b0) ?  1 : 0;
 endmodule
 
 module HexDecoder(in,out);
