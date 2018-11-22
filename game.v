@@ -469,13 +469,13 @@ module SubCounter(val,decrease,clock,reset,out,is_zero);
 	input clock;
 	input reset;
 	
-	output reg [7:0] out;
+	output reg [3:0] out;
 	output is_zero
 	
 	always @(posedge clock)
 	begin
 		if (~reset)
-			out <= val;
+			out <= val[3:0];
 		else
 			begin
 				if (decrease)
