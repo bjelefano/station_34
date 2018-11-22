@@ -6,35 +6,36 @@ module DisplayModule(string,go,clock,reset,out);
 	
 	output reg [2:0] out;
 	
-	wire clk,bit;
+	wire clk,bit,start;
 	
-	OutputRegister MSBit(string,go,clock,reset,bit);
-	RateDivider twoHz(26'b01011111010111100001000000 - 1'b1,clock,reset_clk,clk);
+	OutputRegister MSBit(string,go,clock,reset,bit,start);
+	RateDivider twoHz(26'd4 - 1'b1,clock,start,clk);
 	
 	reg [3:0] current_state, next_state;
 	
-	localparam WAIT = 4'd0,
-				  ONE = 4'd1,
-				  TWO = 4'd2,
-				  THREE = 4'd3,
-				  FOUR = 4'd4,
-				  OUT_TOGGLE = 4'd5,
-				  OUT_PUSH = 4'd6,
-				  OUT_MIC = 4'd7,
-				  OUT_MOUSE = 4'd8;
+	localparam 
+	WAIT = 4'd0, 
+	ONE = 4'd1,
+	TWO = 4'd2,
+	THREE = 4'd3,
+	FOUR = 4'd4,
+	OUT_TOGGLE = 4'd5,
+	OUT_PUSH = 4'd6,
+	OUT_MIC = 4'd7,
+	OUT_MOUSE = 4'd8;
 	
 	always @(posedge clk, reset)
-   begin: state_FFs
+	begin: state_FFs
 		if(~reset)
 			current_state <= WAIT;
-      else
-         current_state <= next_state;
-   end
+		else
+			current_state <= next_state;
+	end
 	
 	always @(*)
-   begin: state_table
+	begin: state_table
 		case(current_state)
-			WAIT : next_state = go ? ONE : WAIT;
+			WAIT : next_state = start ? ONE : WAIT;
 			ONE : next_state = bit ? TWO : OUT_TOGGLE;
 			TWO : next_state = bit ? THREE : OUT_PUSH;
 			THREE : next_state = bit ? FOUR : OUT_MIC;
@@ -44,61 +45,75 @@ module DisplayModule(string,go,clock,reset,out);
 			OUT_MIC : next_state = bit ? ONE : WAIT;
 			OUT_MOUSE : next_state = bit ? ONE : WAIT;
 		endcase
-   end
+	end
 	
 	always @(*)
-   begin: enable_signals
+	begin: enable_signals
 		out = 3'd0;
 		case(current_state)
-			WAIT : out = 3'd0
+			WAIT : out = 3'd0;
 			OUT_TOGGLE : out = 3'd1;
-			OUT_PUSH : out = 3'd2
-			OUT_MIC : out = 3'd3
-			OUT_MOUSE : out = 3'd4
+			OUT_PUSH : out = 3'd2;
+			OUT_MIC : out = 3'd3;
+			OUT_MOUSE : out = 3'd4;
 		endcase
-   end
+	end
 	
 endmodule
 
-module OutputRegister(in,start,clock,reset,out);
+module OutputRegister(in,start,clock,reset,out,trigger);
 	input [63:0] in;
 	input start;
 	input clock;
 	input reset;
-	output reg out;
+	output reg out,trigger;
 	
 	reg [63:0] val1,val2;
+	reg reset_clk,started;
+	wire clk;
 	
 	always @(posedge clock)
 	begin
-		if (reset == 1'b0)
+		if (~reset)
 			begin
 				val1 <= 64'd0;
 				reset_clk <= 1'd0;
+				trigger <= 1'b0;
 			end
-		else if (start == 1'b0)
-			val1 <= in;
-		else if (val1[64] != 1'b1)
+		else if (start)
+			begin
+				val1 <= in;
+				trigger <= 1'b0;
+			end
+		else if (val1[63] != 1'b1)
 				val1 <= val1 << 1'b1;
 		else
-			reset_clk <= 1'd1;
+			begin
+				reset_clk <= 1'd1;
+				trigger <= 1'b1;
+			end
 	end
 	
-	reg clk,reset_clk;
-	RateDivider twoHz(26'b01011111010111100001000000 - 1'b1,clock,reset_clk,clk);
-
-	always @(posedge clk)
+	RateDivider twoHz(26'd4 - 1'b1,clock,reset_clk,clk);
+	
+	always @(posedge clk, trigger,reset)
 	begin
-		if (reset == 1'b0)
+		if (~reset)
 			begin
 				out <= 0;
 				val2 <= 64'd0;
+				started <= 1'b0;
 			end
-		else if (val1[64] == 1'b1)
-			val2 <= val1;
+		else if (trigger & ~started)
+			begin
+				val2 <= val1;
+				started <= 1'b1;
+			end
+		else if (~trigger & started)
+			started <= 1'b0;
 		else
 			begin
-				out <= val2[64];
+				out <= val2[63];
 				val2 <= val2 << 1'b1;
 			end
 	end
@@ -311,7 +326,7 @@ module RateDivider(in,clockIn,reset,clockOut);
 			end
 	end
 	
-	assign clock_out = (|q == 1'b0) ?  1 : 0;
+	assign clockOut = (|q == 1'b0) ?  1 : 0;
 endmodule
 
 module HexDecoder(in,out);
