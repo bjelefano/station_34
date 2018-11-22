@@ -1,4 +1,67 @@
-module control(start,display_done,no_lives,check,clock,reset,display,score_up,life_down,generate_string,fetch_check);
+module top(inputs,go,clock,reset,curr_score,curr_lives,prompts);
+	input [3:0] inputs;
+	input go;
+	output [7:0] curr_score;
+	output [3:0] curr_lives;
+	output [2:0] prompts;
+	
+	wire [63:0] user_string, comp_string;
+	wire start_display, finish_display, add_to_string, zero_lives, loss_life, gain_score, reset_IO;
+	
+	control c0(
+		.start(go),
+		.display_done(finish_display),
+		.no_lives(zero_lives),
+		.check(user_string == comp_string),
+		.clock(clock),
+		.reset(reset),
+		.display(start_display),
+		.score_up(gain_score),
+		.life_down(loss_life),
+		.generate_string(add_to_string),
+		.reset_user(reset_IO)
+	);
+	InputModule UserInput(
+		.toggle(inputs[0]),
+		.push(inputs[1]),
+		.mic(inputs[2]),
+		.mouse(inputs[3]),
+		.clock(clock),
+		.reset(reset | reset_IO),
+		.out(user_string)
+	);
+	DisplayModule Display(
+		.string(comp_string),
+		.go(start_display),
+		.clock(clock),
+		.reset(reset),
+		.out(prompts),
+		.done(finish_display)
+	);
+	StringGenerator(
+		.inc(add_to_string),
+		.clock(clock),
+		.reset(reset),
+		.out(comp_string)
+	);
+	AddCounter Score(
+		.val(8'd0),
+		.increase(gain_score),
+		.clock(clock),
+		.reset(reset),
+		.out(curr_score)
+	);
+	SubCounter Lives(
+		.val(8'd3),
+		.decrease(loss_life),
+		.clock(clock),
+		.reset(reset),
+		.out(curr_lives),
+		.is_zero(zero_lives)
+	);
+endmodule
+
+module control(start,display_done,no_lives,check,clock,reset,display,score_up,life_down,generate_string, reset_user);
 	input start;
 	input display_done;
 	input no_lives;
@@ -6,7 +69,7 @@ module control(start,display_done,no_lives,check,clock,reset,display,score_up,li
 	input clock;
 	input reset;
 	
-	output reg display, score_up, life_down, generate_string,fetch_check;
+	output reg display, score_up, life_down, generate_string, reset_user;
 	
 	reg [3:0] current_state, next_state;
 	
@@ -37,7 +100,7 @@ module control(start,display_done,no_lives,check,clock,reset,display,score_up,li
 			START_WAIT : next_state = start ? START_WAIT : NEXT_LEVEL;
 			NEXT_LEVEL : next_state = DISPLAY;
 			DISPLAY : next_state = display_done ? USER_INPUT : DISPLAY;
-			USER_INPUT : next_state = start ? USER_INPUT_WAIT : START;
+			USER_INPUT : next_state = start ? USER_INPUT_WAIT : USER_INPUT;
 			USER_INPUT_WAIT : next_state = start ? USER_INPUT_WAIT : CHECK;
 			CHECK : next_state = check ? SCORE_INCREMENT : LIFE_DECREMENT;
 			SCORE_INCREMENT: next_state = NEXT_LEVEL;
@@ -49,15 +112,22 @@ module control(start,display_done,no_lives,check,clock,reset,display,score_up,li
 	begin: enable_signals
 		display = 1'b0;
 		score_up = 1'b0;
-		life_down = 1'b0
+		life_down = 1'b0;
 		generate_string = 1'b0;
-		fetch_check = 1'b0
+		reset_user = 1'b1;
 		case(current_state)
 			NEXT_LEVEL : generate_string = 1'b1;
 			DISPLAY : display = 1'b1;
-			CHECK : fetch_check = 1'b1;
-			SCORE_INCREMENT: score_up = 1'b1;
-			LIFE_DECREMENT: life_down = 1'b1;
+			SCORE_INCREMENT: 
+			begin
+				score_up = 1'b1;
+				reset_user = 1'b0;
+			end
+			LIFE_DECREMENT: 
+			begin
+				life_down = 1'b1;
+				reset_user = 1'b0;
+			end
 		endcase
 	end
 endmodule
@@ -357,13 +427,14 @@ module AddCounter(val,increase,clock,reset,out);
 	end
 endmodule
 
-module SubCounter(val,decrease,clock,reset,out);
+module SubCounter(val,decrease,clock,reset,out,is_zero);
 	input [7:0] val;
 	input decrease;
 	input clock;
 	input reset;
 	
 	output reg [7:0] out;
+	output is_zero
 	
 	always @(posedge clock)
 	begin
@@ -375,6 +446,8 @@ module SubCounter(val,decrease,clock,reset,out);
 					out <= out - 1'b1;
 			end
 	end
+	
+	assign is_zero = (out == 1'b0);
 endmodule
 
 module RateDivider(in,clockIn,reset,clockOut);
