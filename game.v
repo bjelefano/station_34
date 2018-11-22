@@ -1,15 +1,80 @@
-module DisplayModule(string,go,clock,reset,out);
+module control(start,display_done,no_lives,check,clock,reset,display,score_up,life_down,generate_string,fetch_check);
+	input start;
+	input display_done;
+	input no_lives;
+	input check;
+	input clock;
+	input reset;
+	
+	output reg display, score_up, life_down, generate_string,fetch_check;
+	
+	reg [3:0] current_state, next_state;
+	
+	localparam 
+	START = 4'd0,
+	START_WAIT = 4'd1,
+	NEXT_LEVEL = 4'd2,
+	DISPLAY = 4'd3,
+	USER_INPUT = 4'd4,
+	USER_INPUT_WAIT = 4'd5,
+	CHECK = 4'd6,
+	SCORE_INCREMENT = 4'd7,
+	LIFE_DECREMENT = 4'd8,
+	GAME_OVER = 4'd9;
+	
+	always @(posedge clock, reset)
+	begin: state_FFs
+		if(~reset)
+			current_state <= START;
+		else
+			current_state <= next_state;
+	end
+	
+	always @(*)
+	begin: state_table
+		case(current_state)
+			START : next_state = start ? START_WAIT : START;
+			START_WAIT : next_state = start ? START_WAIT : NEXT_LEVEL;
+			NEXT_LEVEL : next_state = DISPLAY;
+			DISPLAY : next_state = display_done ? USER_INPUT : DISPLAY;
+			USER_INPUT : next_state = start ? USER_INPUT_WAIT : START;
+			USER_INPUT_WAIT : next_state = start ? USER_INPUT_WAIT : CHECK;
+			CHECK : next_state = check ? SCORE_INCREMENT : LIFE_DECREMENT;
+			SCORE_INCREMENT: next_state = NEXT_LEVEL;
+			LIFE_DECREMENT: next_state = no_lives ? GAME_OVER : DISPLAY;
+		endcase
+	end
+	
+	always @(*)
+	begin: enable_signals
+		display = 1'b0;
+		score_up = 1'b0;
+		life_down = 1'b0
+		generate_string = 1'b0;
+		fetch_check = 1'b0
+		case(current_state)
+			NEXT_LEVEL : generate_string = 1'b1;
+			DISPLAY : display = 1'b1;
+			CHECK : fetch_check = 1'b1;
+			SCORE_INCREMENT: score_up = 1'b1;
+			LIFE_DECREMENT: life_down = 1'b1;
+		endcase
+	end
+endmodule
+
+module DisplayModule(string,go,clock,reset,out,done);
 	input [63:0] string;
 	input go;
 	input clock;
 	input reset;
 	
 	output reg [2:0] out;
+	output reg done;
 	
 	wire clk,bit,start;
 	
 	OutputRegister MSBit(string,go,clock,reset,bit,start);
-	RateDivider twoHz(26'd4 - 1'b1,clock,start,clk);
+	RateDivider twoHz2(26'b01011111010111100001000000 - 1'b1,clock,start,clk);
 	
 	reg [3:0] current_state, next_state;
 	
@@ -52,8 +117,13 @@ module DisplayModule(string,go,clock,reset,out);
 	always @(*)
 	begin: enable_signals
 		out = 3'd0;
+		done = 1'b0;
 		case(current_state)
-			WAIT : out = 3'd0;
+			WAIT : 
+			begin
+				out = 3'd0;
+				done = 1'b1;
+			end
 			OUT_TOGGLE : out = 3'd1;
 			OUT_PUSH : out = 3'd2;
 			OUT_MIC : out = 3'd3;
@@ -96,7 +166,7 @@ module OutputRegister(in,start,clock,reset,out,trigger);
 			end
 	end
 	
-	RateDivider twoHz(26'd4 - 1'b1,clock,reset_clk,clk);
+	RateDivider twoHz1(26'b01011111010111100001000000 - 1'b1,clock,reset_clk,clk);
 	
 	always @(posedge clk, trigger,reset)
 	begin
