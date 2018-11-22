@@ -1,3 +1,38 @@
+module game(SW,KEY,LEDR,HEX0,HEX4,HEX5);
+	input [9:0] SW;
+	input [3:0] KEY;
+	output [9:0] LEDR;
+	output [6:0] HEXO, HEX4, HEX5;
+	
+	wire [7:0] score;
+	wire [3:0] lives;
+	
+	top Game(
+		.inputs({SW[1],SW[0],~KEY[3],~KEY[2]}),
+		.go(~[KEY[0]),
+		.clock(clock),
+		.reset(SW[9]),
+		.curr_score(score),
+		.curr_lives(lives),
+		.prompts(LEDR[2:0])
+	);
+	
+	HexDecoder HO(
+		.in(lives),
+		.out(HEX0)
+	);
+	
+	HexDecoder H4(
+		.in(score[3:0]),
+		.out(HEX4)
+	);
+	
+	HexDecoder H5(
+		.in(score[7:4]),
+		.out(HEX5)
+	);
+endmodule
+
 module top(inputs,go,clock,reset,curr_score,curr_lives,prompts);
 	input [3:0] inputs;
 	input go;
@@ -105,6 +140,7 @@ module control(start,display_done,no_lives,check,clock,reset,display,score_up,li
 			CHECK : next_state = check ? SCORE_INCREMENT : LIFE_DECREMENT;
 			SCORE_INCREMENT: next_state = NEXT_LEVEL;
 			LIFE_DECREMENT: next_state = no_lives ? GAME_OVER : DISPLAY;
+			GAME_OVER: next_state = ~reset ? START : GAME_OVER;
 		endcase
 	end
 	
@@ -390,7 +426,7 @@ module InputListener(toggle,clock,reset,out);
 	
 	reg mem;
 
-	always @(clock)
+	always @(posedge clock)
 	begin
 		if (~reset)
 			begin
