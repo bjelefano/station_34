@@ -14,15 +14,16 @@ module DisplayModule(string,go,clock,reset,out);
 	reg [3:0] current_state, next_state;
 	
 	localparam 
-	WAIT = 4'd0, 
-	ONE = 4'd1,
-	TWO = 4'd2,
-	THREE = 4'd3,
-	FOUR = 4'd4,
-	OUT_TOGGLE = 4'd5,
-	OUT_PUSH = 4'd6,
-	OUT_MIC = 4'd7,
-	OUT_MOUSE = 4'd8;
+	WAIT = 4'd0,
+	BUFFER = 4'd1,
+	ONE = 4'd2,
+	TWO = 4'd3,
+	THREE = 4'd4,
+	FOUR = 4'd5,
+	OUT_TOGGLE = 4'd6,
+	OUT_PUSH = 4'd7,
+	OUT_MIC = 4'd8,
+	OUT_MOUSE = 4'd9;
 	
 	always @(posedge clk, reset)
 	begin: state_FFs
@@ -35,7 +36,8 @@ module DisplayModule(string,go,clock,reset,out);
 	always @(*)
 	begin: state_table
 		case(current_state)
-			WAIT : next_state = start ? ONE : WAIT;
+			WAIT : next_state = start ? BUFFER : WAIT;
+			BUFFER: next_state = ONE;
 			ONE : next_state = bit ? TWO : OUT_TOGGLE;
 			TWO : next_state = bit ? THREE : OUT_PUSH;
 			THREE : next_state = bit ? FOUR : OUT_MIC;
