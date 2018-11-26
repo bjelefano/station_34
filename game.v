@@ -184,67 +184,27 @@ module DisplayModule(bstring,go,clock,reset,out,done);
 	output reg [2:0] out;
 	output reg done;
 	
-	wire clk,Lbit,start;
+	wire clk,start;
+	wire [4:0] displayBits;
 	wire [63:0] outstring;
 	
 	NoLeadingZeroRegister ZeroBit(bstring,go,clock,reset,outstring,start);
-	RateDivider twoHz2(26'd50000000 - 1'b1,clock,start,clk);
-	OutputRegister MSBit(outstring,start,clk,reset,Lbit);
-	
-	reg [3:0] current_state, next_state;
-	
-	localparam 
-	WAIT = 4'd0,
-	BUFFER = 4'd1,
-	ONE = 4'd2,
-	TWO = 4'd3,
-	THREE = 4'd4,
-	FOUR = 4'd5,
-	OUT_TOGGLE = 4'd6,
-	OUT_PUSH = 4'd7,
-	OUT_MIC = 4'd8,
-	OUT_MOUSE = 4'd9;
-	
-	always @(posedge clk)
-	begin: state_FFs
-		if(~reset)
-			current_state <= WAIT;
-		else
-			current_state <= next_state;
+	RateDivider Hz2(26'd50000000 - 1'b1,clock,start,clk);
+	OutputRegister MSBit(outstring,start,clk,reset,displayBits);
+		
+	always @(displayBits)
+	begin
+		if (displayBits == 5'b10000)
+			out = 3'b001;
+		else if (displatBits == 5'b11000)
+			out = 3'b010;
+		else if (displayBits == 5'b11100)
+			out = 3'b011;
+		else if (displayBits == 5'b11110)
+			out = 3'b100;
+		else 
+			out = 3'b000;
 	end
-	
-	always @(*)
-	begin: state_table
-		case(current_state)
-			WAIT : next_state = start ? ONE : WAIT;
-			ONE : next_state = Lbit ? TWO : OUT_TOGGLE;
-			TWO : next_state = Lbit ? THREE : OUT_PUSH;
-			THREE : next_state = Lbit ? FOUR : OUT_MIC;
-			FOUR : next_state = OUT_MOUSE;
-			OUT_TOGGLE : next_state = Lbit ? ONE : WAIT;
-			OUT_PUSH : next_state = Lbit ? ONE : WAIT;
-			OUT_MIC : next_state = Lbit ? ONE : WAIT;
-			OUT_MOUSE : next_state = Lbit ? ONE : WAIT;
-		endcase
-	end
-	
-	always @(*)
-	begin: enable_signals
-		out = 3'd0;
-		done = 1'b0;
-		case(current_state)
-			WAIT : 
-			begin
-				out = 3'd0;
-				done = 1'b1;
-			end
-			OUT_TOGGLE : out = 3'd1;
-			OUT_PUSH : out = 3'd2;
-			OUT_MIC : out = 3'd3;
-			OUT_MOUSE : out = 3'd4;
-		endcase
-	end
-	
 endmodule
 
 module OutputRegister(in,start,clock,reset,out);
@@ -252,7 +212,7 @@ module OutputRegister(in,start,clock,reset,out);
 	input start;
 	input clock;
 	input reset;
-	output reg out;
+	output reg [4:0] out;
 	
 	reg [63:0] val2;
 	reg mem;
@@ -268,14 +228,14 @@ module OutputRegister(in,start,clock,reset,out);
 		else
 			begin
 				if (start & ~mem)
-				begin
-					val2 <= in;
-					mem <= 1'b1;
-				end
+					begin
+						val2 <= in;
+						mem <= 1'b1;
+					end
 				else
 				begin
-					out <= val2[63];
-					val2 <= val2 << 1'b1;
+					out <= val2[63:59];
+					val2 <= val2 << 3'd5;
 				end
 			end
 	end
@@ -445,11 +405,11 @@ module StringRegister(in,clock,reset,out);
 			out <= 64'd0;
 		else begin
 			if (in == 3'd1)
-				out <= (out << 2'd2) + 2'b10;
+				out <= (out << 2'd2) + 2'b10000;
 			else if (in == 3'd2)
-				out <= (out << 2'd3) + 3'b110;
+				out <= (out << 2'd3) + 3'b11000;
 			else if (in == 3'd3)
-				out <= (out << 3'd4) + 4'b1110;
+				out <= (out << 3'd4) + 4'b11100;
 			else if (in == 3'd4)
 				out <= (out << 3'd5) + 5'b11110;
 		end
