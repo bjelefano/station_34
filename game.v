@@ -1,23 +1,24 @@
-module game(SW,KEY,LEDR,HEX0,HEX4,HEX5);
+module project(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50);
 	input [9:0] SW;
 	input [3:0] KEY;
+	input CLOCK_50;
 	output [9:0] LEDR;
-	output [6:0] HEXO, HEX4, HEX5;
+	output [6:0] HEX0, HEX4, HEX5;
 	
 	wire [7:0] score;
 	wire [3:0] lives;
 	
 	top Game(
-		.inputs({SW[1],SW[0],~KEY[3],~KEY[2]}),
-		.go(~[KEY[0]),
-		.clock(clock),
-		.reset(SW[9]),
+		.inputs({SW[3],SW[2],SW[1],SW[0]}),
+		.go(~KEY[0]),
+		.clk(CLOCK_50),
+		.reset_n(SW[9]),
 		.curr_score(score),
 		.curr_lives(lives),
 		.prompts(LEDR[2:0])
 	);
 	
-	HexDecoder HO(
+	HexDecoder H0(
 		.in(lives),
 		.out(HEX0)
 	);
@@ -33,9 +34,12 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5);
 	);
 endmodule
 
-module top(inputs,go,clock,reset,curr_score,curr_lives,prompts);
+module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts);
 	input [3:0] inputs;
 	input go;
+	input clk;
+	input reset_n;
+	
 	output [7:0] curr_score;
 	output [3:0] curr_lives;
 	output [2:0] prompts;
@@ -44,12 +48,12 @@ module top(inputs,go,clock,reset,curr_score,curr_lives,prompts);
 	wire start_display, finish_display, add_to_string, zero_lives, loss_life, gain_score, reset_IO;
 	
 	control c0(
-		.start(go),
+		.go(go),
 		.display_done(finish_display),
-		.no_lives(zero_lives),
+		.no_lives(1'b0),
 		.check(user_string == comp_string),
-		.clock(clock),
-		.reset(reset),
+		.clock(clk),
+		.reset(reset_n),
 		.display(start_display),
 		.score_up(gain_score),
 		.life_down(loss_life),
@@ -61,43 +65,43 @@ module top(inputs,go,clock,reset,curr_score,curr_lives,prompts);
 		.push(inputs[1]),
 		.mic(inputs[2]),
 		.mouse(inputs[3]),
-		.clock(clock),
-		.reset(reset | reset_IO),
+		.clock(clk),
+		.reset(reset_n | reset_IO),
 		.out(user_string)
 	);
 	DisplayModule Display(
-		.string(comp_string),
+		.bstring(comp_string),
 		.go(start_display),
-		.clock(clock),
-		.reset(reset),
+		.clock(clk),
+		.reset(reset_n),
 		.out(prompts),
 		.done(finish_display)
 	);
-	StringGenerator(
+	StringGenerator Comp(
 		.inc(add_to_string),
-		.clock(clock),
-		.reset(reset),
+		.clock(clk),
+		.reset(reset_n),
 		.out(comp_string)
 	);
 	AddCounter Score(
 		.val(8'd0),
 		.increase(gain_score),
-		.clock(clock),
-		.reset(reset),
+		.clock(clk),
+		.reset(reset_n),
 		.out(curr_score)
 	);
 	SubCounter Lives(
 		.val(8'd3),
 		.decrease(loss_life),
-		.clock(clock),
-		.reset(reset),
-		.out(curr_lives),
+		.clock(clk),
+		.reset(reset_n),
+		.out(curr_lives[3:0]),
 		.is_zero(zero_lives)
 	);
 endmodule
 
-module control(start,display_done,no_lives,check,clock,reset,display,score_up,life_down,generate_string, reset_user);
-	input start;
+module control(go,display_done,no_lives,check,clock,reset,display,score_up,life_down,generate_string,reset_user);
+	input go;
 	input display_done;
 	input no_lives;
 	input check;
@@ -120,10 +124,12 @@ module control(start,display_done,no_lives,check,clock,reset,display,score_up,li
 	LIFE_DECREMENT = 4'd8,
 	GAME_OVER = 4'd9;
 	
-	always @(posedge clock, reset)
+	always @(posedge clock)
 	begin: state_FFs
 		if(~reset)
+		begin
 			current_state <= START;
+		end
 		else
 			current_state <= next_state;
 	end
@@ -131,12 +137,12 @@ module control(start,display_done,no_lives,check,clock,reset,display,score_up,li
 	always @(*)
 	begin: state_table
 		case(current_state)
-			START : next_state = start ? START_WAIT : START;
-			START_WAIT : next_state = start ? START_WAIT : NEXT_LEVEL;
+			START : next_state = go ? START_WAIT : START;
+			START_WAIT : next_state = go ? START_WAIT : NEXT_LEVEL;
 			NEXT_LEVEL : next_state = DISPLAY;
 			DISPLAY : next_state = display_done ? USER_INPUT : DISPLAY;
-			USER_INPUT : next_state = start ? USER_INPUT_WAIT : USER_INPUT;
-			USER_INPUT_WAIT : next_state = start ? USER_INPUT_WAIT : CHECK;
+			USER_INPUT : next_state = go ? USER_INPUT_WAIT : USER_INPUT;
+			USER_INPUT_WAIT : next_state = go ? USER_INPUT_WAIT : CHECK;
 			CHECK : next_state = check ? SCORE_INCREMENT : LIFE_DECREMENT;
 			SCORE_INCREMENT: next_state = NEXT_LEVEL;
 			LIFE_DECREMENT: next_state = no_lives ? GAME_OVER : DISPLAY;
@@ -151,6 +157,7 @@ module control(start,display_done,no_lives,check,clock,reset,display,score_up,li
 		life_down = 1'b0;
 		generate_string = 1'b0;
 		reset_user = 1'b1;
+		
 		case(current_state)
 			NEXT_LEVEL : generate_string = 1'b1;
 			DISPLAY : display = 1'b1;
@@ -168,8 +175,8 @@ module control(start,display_done,no_lives,check,clock,reset,display,score_up,li
 	end
 endmodule
 
-module DisplayModule(string,go,clock,reset,out,done);
-	input [63:0] string;
+module DisplayModule(bstring,go,clock,reset,out,done);
+	input [63:0] bstring;
 	input go;
 	input clock;
 	input reset;
@@ -177,10 +184,12 @@ module DisplayModule(string,go,clock,reset,out,done);
 	output reg [2:0] out;
 	output reg done;
 	
-	wire clk,bit,start;
+	wire clk,Lbit,start;
+	wire [63:0] outstring;
 	
-	OutputRegister MSBit(string,go,clock,reset,bit,start);
-	RateDivider twoHz2(26'b01011111010111100001000000 - 1'b1,clock,start,clk);
+	NoLeadingZeroRegister ZeroBit(bstring,go,clock,reset,outstring,start);
+	RateDivider twoHz2(26'd50000000 - 1'b1,clock,start,clk);
+	OutputRegister MSBit(outstring,start,clk,reset,Lbit);
 	
 	reg [3:0] current_state, next_state;
 	
@@ -196,7 +205,7 @@ module DisplayModule(string,go,clock,reset,out,done);
 	OUT_MIC = 4'd8,
 	OUT_MOUSE = 4'd9;
 	
-	always @(posedge clk, reset)
+	always @(posedge clk)
 	begin: state_FFs
 		if(~reset)
 			current_state <= WAIT;
@@ -207,16 +216,15 @@ module DisplayModule(string,go,clock,reset,out,done);
 	always @(*)
 	begin: state_table
 		case(current_state)
-			WAIT : next_state = start ? BUFFER : WAIT;
-			BUFFER: next_state = ONE;
-			ONE : next_state = bit ? TWO : OUT_TOGGLE;
-			TWO : next_state = bit ? THREE : OUT_PUSH;
-			THREE : next_state = bit ? FOUR : OUT_MIC;
+			WAIT : next_state = start ? ONE : WAIT;
+			ONE : next_state = Lbit ? TWO : OUT_TOGGLE;
+			TWO : next_state = Lbit ? THREE : OUT_PUSH;
+			THREE : next_state = Lbit ? FOUR : OUT_MIC;
 			FOUR : next_state = OUT_MOUSE;
-			OUT_TOGGLE : next_state = bit ? ONE : WAIT;
-			OUT_PUSH : next_state = bit ? ONE : WAIT;
-			OUT_MIC : next_state = bit ? ONE : WAIT;
-			OUT_MOUSE : next_state = bit ? ONE : WAIT;
+			OUT_TOGGLE : next_state = Lbit ? ONE : WAIT;
+			OUT_PUSH : next_state = Lbit ? ONE : WAIT;
+			OUT_MIC : next_state = Lbit ? ONE : WAIT;
+			OUT_MOUSE : next_state = Lbit ? ONE : WAIT;
 		endcase
 	end
 	
@@ -239,23 +247,56 @@ module DisplayModule(string,go,clock,reset,out,done);
 	
 endmodule
 
-module OutputRegister(in,start,clock,reset,out,trigger);
+module OutputRegister(in,start,clock,reset,out);
 	input [63:0] in;
 	input start;
 	input clock;
 	input reset;
-	output reg out,trigger;
+	output reg out;
 	
-	reg [63:0] val1,val2;
-	reg reset_clk,started;
-	wire clk;
+	reg [63:0] val2;
+	reg mem;
 	
+	always @(posedge clock)
+	begin
+		if (~reset | (~start & mem))
+			begin
+				out <= 64'd0;
+				val2 <= 64'd0;
+				mem <= 1'b0;
+			end
+		else
+			begin
+				if (start & ~mem)
+				begin
+					val2 <= in;
+					mem <= 1'b1;
+				end
+				else
+				begin
+					out <= val2[63];
+					val2 <= val2 << 1'b1;
+				end
+			end
+	end
+	
+endmodule
+
+module NoLeadingZeroRegister(in,start,clock,reset,out,trigger);
+	input [63:0] in;
+	input start;
+	input clock;
+	input reset;
+	output reg [63:0] out;
+	output reg trigger;
+	
+	reg [63:0] val1;
+
 	always @(posedge clock)
 	begin
 		if (~reset)
 			begin
 				val1 <= 64'd0;
-				reset_clk <= 1'd0;
 				trigger <= 1'b0;
 			end
 		else if (start)
@@ -267,32 +308,8 @@ module OutputRegister(in,start,clock,reset,out,trigger);
 				val1 <= val1 << 1'b1;
 		else
 			begin
-				reset_clk <= 1'd1;
+				out <= val1;
 				trigger <= 1'b1;
-			end
-	end
-	
-	RateDivider twoHz1(26'b01011111010111100001000000 - 1'b1,clock,reset_clk,clk);
-	
-	always @(posedge clk, trigger,reset)
-	begin
-		if (~reset)
-			begin
-				out <= 0;
-				val2 <= 64'd0;
-				started <= 1'b0;
-			end
-		else if (trigger & ~started)
-			begin
-				val2 <= val1;
-				started <= 1'b1;
-			end
-		else if (~trigger & started)
-			started <= 1'b0;
-		else
-			begin
-				out <= val2[63];
-				val2 <= val2 << 1'b1;
 			end
 	end
 	
@@ -307,8 +324,10 @@ module StringGenerator(inc,clock,reset,out);
 	
 	reg [2:0] counter;
 	reg [3:0] in;
+	reg toggle;
+	wire pulse;
 	
-	always @(posedge inc, reset)
+	always @(posedge inc, negedge reset)
 	begin
 		if(~reset)
 			counter <= 3'b000;
@@ -318,19 +337,41 @@ module StringGenerator(inc,clock,reset,out);
 	
 	always @(counter, reset)
 	begin
-		if (counter == 2'b00 | ~reset)
-			in <= 4'b0000;
+		if (~reset)
+			begin
+				in <= 4'b0000;
+				toggle <= 1'b0;
+			end
 		else if (counter == 3'b001)
-			in <= 4'b0001;
+			begin
+				in <= 4'b0001;
+				toggle <= ~toggle;
+			end
 		else if (counter == 3'b010)
-			in <= 4'b0010;
+			begin
+				in <= 4'b0010;
+				toggle <= ~toggle;
+			end
 		else if (counter == 3'b011)
-			in <= 4'b0100;
+			begin
+				in <= 4'b0100;
+				toggle <= ~toggle;
+			end
 		else if (counter == 3'b100)
-			in <= 4'b1000;
+			begin
+				in <= 4'b1000;
+				toggle <= ~toggle;
+			end
+		else
+			begin
+				in <= 4'b0000;
+				toggle <= ~toggle;
+			end
+			
 	end
 	
-	InputModule generator(in[0],in[1],in[2],in[3],clock,reset,out);
+	InputListener SendPulse(toggle,clock,reset,pulse);
+	InputModule generator(in[0],in[1],in[2],in[3],pulse,reset,out);
 	
 endmodule
 
@@ -346,8 +387,6 @@ module InputModule(toggle,push,mic,mouse,clock,reset,out);
 	
 	wire [2:0] in;
 	wire clk;
-	
-	RateDivider doubleTime(26'd1,clock,reset,clk);
 	
 	InputType IOType(toggle,push,mic,mouse,clock,reset,in);
 	StringRegister InputString(in,clock,reset,out);
@@ -371,7 +410,7 @@ module InputType(toggle,push,mic,mouse,clock,reset,out);
 	InputListener MicrophoneListener(mic,clock,reset,input3);
 	InputListener MouseListener(mouse,clock,reset,input4);
 	
-	always @(clock)
+	always @(posedge clock)
 	begin
 		if (~reset)
 			begin
@@ -435,7 +474,7 @@ module InputListener(toggle,clock,reset,out);
 			end
 		else if (mem != toggle)
 			begin
-				out <= toggle;
+				out <= 1'b1;
 				mem <= toggle;
 			end
 		else 
@@ -456,31 +495,31 @@ module AddCounter(val,increase,clock,reset,out);
 		if (~reset)
 			out <= val;
 		else
-			begin
-				if (increase)
-					out <= out + 1'b1;
-			end
+		begin
+			if (increase)
+				out <= out + 1'b1;
+		end
 	end
 endmodule
 
 module SubCounter(val,decrease,clock,reset,out,is_zero);
-	input [7:0] val;
+	input [3:0] val;
 	input decrease;
 	input clock;
 	input reset;
 	
 	output reg [3:0] out;
-	output is_zero
+	output is_zero;
 	
 	always @(posedge clock)
 	begin
 		if (~reset)
-			out <= val[3:0];
+			out <= val;
 		else
-			begin
-				if (decrease)
-					out <= out - 1'b1;
-			end
+		begin
+			if (decrease)
+				out <= out - 1'b1;
+		end
 	end
 	
 	assign is_zero = (out == 1'b0);
@@ -496,7 +535,7 @@ module RateDivider(in,clockIn,reset,clockOut);
 	
 	always @(posedge clockIn)
 	begin
-		if (reset == 1'b0) 
+		if (~reset) 
 			q <= 26'd0;
 		else
 			begin
