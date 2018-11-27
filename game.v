@@ -477,8 +477,16 @@ module InputListener(toggle,clock,reset,out);
 			end
 		else if (mem != toggle)
 			begin
-				out <= 1'b1;
-				mem <= toggle;
+				if (toggle)
+					begin
+						out <= 1'b1;
+						mem <= toggle;
+					end
+				else
+					begin
+						out <= 1'b0;
+						mem <= toggle;
+					end
 			end
 		else 
 			out <= 1'b0;
