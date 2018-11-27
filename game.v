@@ -1,4 +1,4 @@
-module project(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50);
+module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50);
 	input [9:0] SW;
 	input [3:0] KEY;
 	input CLOCK_50;
@@ -45,20 +45,26 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts);
 	output [2:0] prompts;
 	
 	wire [63:0] user_string, comp_string;
-	wire start_display, finish_display, add_to_string, zero_lives, loss_life, gain_score, reset_IO;
+	wire start_display, finish_display, add_to_string, reset_IO;
+	wire ld_lives, ld_score, ld_alu_out;
+	wire [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
 	control c0(
 		.go(go),
 		.display_done(finish_display),
-		.no_lives(1'b0),
+		.no_lives(curr_lives == 1'b0),
 		.check(user_string == comp_string),
 		.clock(clk),
 		.reset(reset_n),
 		.display(start_display),
-		.score_up(gain_score),
-		.life_down(loss_life),
 		.generate_string(add_to_string),
-		.reset_user(reset_IO)
+		.reset_user(reset_IO),
+		.ld_lives(ld_lives),
+		.ld_score(ld_score),
+		.ld_alu_out(ld_alu_out),
+		.alu_sel_a(alu_sel_a),
+		.alu_sel_b(alu_sel_b),
+		.alu_func(alu_func)
 	);
 	InputModule UserInput(
 		.toggle(inputs[0]),
@@ -83,24 +89,22 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts);
 		.reset(reset_n),
 		.out(comp_string)
 	);
-	AddCounter Score(
-		.val(8'd0),
-		.increase(gain_score),
+	
+	datapath d0(
+		.score(curr_score),
+		.lives(curr_lives),
+		.ld_score(ld_score),
+		.ld_lives(ld_lives),
+		.ld_alu_out(ld_alu_out),
+		.alu_sel_a(ld_sel_a),
+		.alu_sel_b(ld_sel_b),
+		.alu_func(alu_func),
 		.clock(clk),
-		.reset(reset_n),
-		.out(curr_score)
-	);
-	SubCounter Lives(
-		.val(8'd3),
-		.decrease(loss_life),
-		.clock(clk),
-		.reset(reset_n),
-		.out(curr_lives[3:0]),
-		.is_zero(zero_lives)
+		.reset(reset_n)
 	);
 endmodule
 
-module control(go,display_done,no_lives,check,clock,reset,display,score_up,life_down,generate_string,reset_user);
+module control(go,display_done,no_lives,check,clock,reset,display,generate_string,reset_user,ld_lives,ld_score,ld_alu_out,alu_sel_a,alu_sel_b,alu_func);
 	input go;
 	input display_done;
 	input no_lives;
@@ -108,7 +112,8 @@ module control(go,display_done,no_lives,check,clock,reset,display,score_up,life_
 	input clock;
 	input reset;
 	
-	output reg display, score_up, life_down, generate_string, reset_user;
+	output reg display,ld_lives,ld_score,ld_alu_out, generate_string, reset_user;
+	output reg [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
 	reg [3:0] current_state, next_state;
 	
@@ -153,22 +158,32 @@ module control(go,display_done,no_lives,check,clock,reset,display,score_up,life_
 	always @(*)
 	begin: enable_signals
 		display = 1'b0;
-		score_up = 1'b0;
-		life_down = 1'b0;
+		ld_lives = 1'b0;
+		ld_score = 1'b0;
+		ld_alu_out = 1'b0;
+		alu_sel_a = 2'd0;
+		alu_sel_b = 2'd0;
+		alu_func = 2'd0;
 		generate_string = 1'b0;
 		reset_user = 1'b1;
 		
 		case(current_state)
+			START :
+			begin
+				ld_lives = 1'b1; ld_score = 1'b1;
+			end
 			NEXT_LEVEL : generate_string = 1'b1;
 			DISPLAY : display = 1'b1;
 			SCORE_INCREMENT: 
 			begin
-				score_up = 1'b1;
+				ld_score = 1'b1; ld_alu_out = 1'b1;
+				alu_sel_a = 2'd1; alu_func = 2'd0;
 				reset_user = 1'b0;
 			end
 			LIFE_DECREMENT: 
 			begin
-				life_down = 1'b1;
+				ld_lives = 1'b1; ld_alu_out = 1'b1;
+				alu_sel_a = 2'd0; alu_func = 2'd1;
 				reset_user = 1'b0;
 			end
 		endcase
@@ -196,7 +211,7 @@ module DisplayModule(bstring,go,clock,reset,out,done);
 	begin
 		if (displayBits == 5'b10000)
 			out = 3'b001;
-		else if (displatBits == 5'b11000)
+		else if (displayBits == 5'b11000)
 			out = 3'b010;
 		else if (displayBits == 5'b11100)
 			out = 3'b011;
@@ -442,47 +457,63 @@ module InputListener(toggle,clock,reset,out);
 	end
 endmodule
 
-module AddCounter(val,increase,clock,reset,out);
-	input [7:0] val;
-	input increase;
-	input clock;
-	input reset;
+module datapath(score,lives,ld_score,ld_lives,ld_alu_out,alu_sel_a,alu_sel_b,alu_func,clock,reset);
+	input ld_score, ld_lives, ld_alu_out, clock, reset;
+	input [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
-	output reg [7:0] out;
+	output reg [3:0] lives;
+	output reg [7:0] score;
 	
-	always @(posedge clock)
-	begin
-		if (~reset)
-			out <= val;
-		else
-		begin
-			if (increase)
-				out <= out + 1'b1;
-		end
-	end
-endmodule
-
-module SubCounter(val,decrease,clock,reset,out,is_zero);
-	input [3:0] val;
-	input decrease;
-	input clock;
-	input reset;
-	
-	output reg [3:0] out;
-	output is_zero;
+	reg [7:0] alu_a, alu_b, alu_out;
 	
 	always @(posedge clock)
 	begin
 		if (~reset)
-			out <= val;
+			begin
+				score <= 8'd0;
+				lives <= 4'd0;
+			end
 		else
 		begin
-			if (decrease)
-				out <= out - 1'b1;
+			if (ld_score)
+				begin
+					if (ld_alu_out)
+						score <= alu_out;
+					else
+						score <= 8'd0;
+				end
+			if (ld_lives)
+				begin
+					if (ld_alu_out)
+						lives <= alu_out[3:0];
+					else
+						score <= 4'd3;
+				end
 		end
 	end
 	
-	assign is_zero = (out == 1'b0);
+	always @(*)
+	begin
+		case (alu_sel_a)
+			2'd0: alu_a = {4'd0, lives};
+			2'd1: alu_a = score;
+			default: alu_a = 8'd0;
+		endcase
+		case (alu_sel_b)
+			2'd0: alu_b = {4'd0, lives};
+			2'd1: alu_b = score;
+			default: alu_b = 8'd0;
+		endcase
+	end
+	
+	always @(*)
+	begin
+		case (alu_func)
+			2'd0: alu_out = alu_a + 1'b1;
+			2'd1: alu_out = alu_a - 1'b1;
+			default: alu_out = 8'd0;
+		endcase
+	end
 endmodule
 
 module RateDivider(in,clockIn,reset,clockOut);
