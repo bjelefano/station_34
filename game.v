@@ -290,6 +290,20 @@ module NoLeadingZeroRegister(in,start,clock,reset,out,trigger);
 	
 endmodule
 
+module Counter(clock,reset,out);
+	input clock;
+	input reset;
+	output reg [1:0] out;
+	
+	always @(posedge clock)
+	begin
+		if (~reset)
+			out <= 2'd0;
+		else
+			out <= (out != 2'd3) ? out + 1'b1 : 2'd0;
+	end
+endmodule
+
 module StringGenerator(inc,clock,reset,out);
 	input inc;
 	input clock;
@@ -297,52 +311,35 @@ module StringGenerator(inc,clock,reset,out);
 	
 	output [63:0] out;
 	
-	reg [2:0] counter;
+	wire [1:0] counter;
 	reg [3:0] in;
-	reg toggle;
 	wire pulse;
 	
-	always @(posedge inc, negedge reset)
-	begin
-		if(~reset)
-			counter <= 3'b000;
-		else if(inc)
-			counter <= (counter != 3'd4) ? counter + 1'b1 : 3'b001;
-	end
+	Counter RNG(clock, reset, counter);
 	
-	always @(counter, reset)
+	always @(posedge inc, negedge reset)
 	begin
 		if (~reset)
 			begin
 				in <= 4'b0000;
-				toggle <= 1'b0;
 			end
-		else if (counter == 3'b001)
+		else if (counter == 2'd0)
 			begin
 				in <= 4'b0001;
-				toggle <= ~toggle;
 			end
-		else if (counter == 3'b010)
+		else if (counter == 2'd1)
 			begin
 				in <= 4'b0010;
-				toggle <= ~toggle;
 			end
-		else if (counter == 3'b011)
+		else if (counter == 2'd2)
 			begin
 				in <= 4'b0100;
-				toggle <= ~toggle;
+
 			end
-		else if (counter == 3'b100)
+		else if (counter == 2'd3)
 			begin
 				in <= 4'b1000;
-				toggle <= ~toggle;
 			end
-		else
-			begin
-				in <= 4'b0000;
-				toggle <= ~toggle;
-			end
-			
 	end
 	
 	InputListener SendPulse(toggle,clock,reset,pulse);
