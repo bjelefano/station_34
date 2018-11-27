@@ -1,3 +1,7 @@
+// Adjust based on the machine
+
+`include "D:/Quartus/labs/lab_project/PS2_Mouse_Controller.v"
+
 module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50);
 	input [9:0] SW;
 	input [3:0] KEY;
@@ -6,16 +10,43 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50);
 	output [6:0] HEX0, HEX4, HEX5;
 	
 	wire [7:0] score;
+	wire [17:0] mvmt;
+	reg [17:0] mem;
 	wire [3:0] lives;
+	reg mouseMVMT;
+	
+	always @(posedge CLOCK_50)
+	begin
+		if (~SW[9])
+			begin
+				mouseMVMT <= 1'b0;
+				mem <= 18'b0;
+			end
+		else if (mvmt != mem)
+			begin
+				mouseMVMT <= 1'b1;
+				mem <= mvmt;
+			end
+		else
+			mouseMVMT <= 1'b0;
+	end
 	
 	top Game(
-		.inputs({SW[3],SW[2],SW[1],SW[0]}),
+		.inputs({SW[3],SW[2],SW[1],mouseMVMT}),
 		.go(~KEY[0]),
 		.clk(CLOCK_50),
 		.reset_n(SW[9]),
 		.curr_score(score),
 		.curr_lives(lives),
 		.prompts(LEDR[2:0])
+	);
+	
+	mouse_tracker mouse(
+		.clock(CLOCK_50),
+		.reset(SW[9]),
+		.enable_tracking(1'b1),
+		.x_pos(mvmt[8:0]),
+		.y_pos(mvmt[17:9])
 	);
 	
 	HexDecoder H0(
