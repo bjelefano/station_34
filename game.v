@@ -2,10 +2,11 @@
 
 `include "D:/Quartus/labs/lab_project/PS2_Mouse_Controller.v"
 
-module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50);
+module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT);
 	input [9:0] SW;
 	input [3:0] KEY;
 	input CLOCK_50;
+	input AUD_ADCDAT;
 	output [9:0] LEDR;
 	output [6:0] HEX0, HEX4, HEX5;
 	
@@ -32,13 +33,14 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50);
 	end
 	
 	top Game(
-		.inputs({SW[3],SW[2],SW[1],mouseMVMT}),
+		.inputs({SW[0],~KEY[3],AUD_ADCDAT,mouseMVMT}),
 		.go(~KEY[0]),
 		.clk(CLOCK_50),
 		.reset_n(SW[9]),
 		.curr_score(score),
 		.curr_lives(lives),
-		.prompts(LEDR[2:0])
+		.prompts(LEDR[2:0]),
+		.flash(LEDR[9])
 	);
 	
 	mouse_tracker mouse(
@@ -65,7 +67,7 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50);
 	);
 endmodule
 
-module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts);
+module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	input [3:0] inputs;
 	input go;
 	input clk;
@@ -74,6 +76,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts);
 	output [7:0] curr_score;
 	output [3:0] curr_lives;
 	output [2:0] prompts;
+	output flash;
 	
 	wire [63:0] user_string, comp_string;
 	wire start_display, finish_display, add_to_string, reset_IO;
@@ -104,7 +107,8 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts);
 		.mouse(inputs[3]),
 		.clock(clk),
 		.reset(reset_n | reset_IO),
-		.out(user_string)
+		.out(user_string),
+		.indicate(flash)
 	);
 	DisplayModule Display(
 		.bstring(comp_string),
@@ -340,11 +344,10 @@ module StringGenerator(inc,clock,reset,out);
 	input clock;
 	input reset;
 	
-	output [63:0] out;
+	output reg [63:0] out;
 	
 	wire [1:0] counter;
 	reg [3:0] in;
-	wire pulse;
 	
 	Counter RNG(clock, reset, counter);
 	
@@ -352,33 +355,29 @@ module StringGenerator(inc,clock,reset,out);
 	begin
 		if (~reset)
 			begin
-				in <= 4'b0000;
+				in <= 64'd0;
 			end
 		else if (counter == 2'd0)
 			begin
-				in <= 4'b0001;
+				out <= (out << 3'd5) + 5'b10000;
 			end
 		else if (counter == 2'd1)
 			begin
-				in <= 4'b0010;
+				out <= (out << 3'd5) + 5'b11000;
 			end
 		else if (counter == 2'd2)
 			begin
-				in <= 4'b0100;
-
+				out <= (out << 3'd5) + 5'b11100;
 			end
 		else if (counter == 2'd3)
 			begin
-				in <= 4'b1000;
+				out <= (out << 3'd5) + 5'b11110;
 			end
 	end
 	
-	InputListener SendPulse(toggle,clock,reset,pulse);
-	InputModule generator(in[0],in[1],in[2],in[3],pulse,reset,out);
-	
 endmodule
 
-module InputModule(toggle,push,mic,mouse,clock,reset,out);
+module InputModule(toggle,push,mic,mouse,clock,reset,out,indicate);
 	input toggle;
 	input push;
 	input mic;
@@ -387,16 +386,16 @@ module InputModule(toggle,push,mic,mouse,clock,reset,out);
 	input reset;
 	
 	output [63:0] out;
+	output indicate;
 	
 	wire [2:0] in;
-	wire clk;
 	
-	InputType IOType(toggle,push,mic,mouse,clock,reset,in);
+	InputType IOType(toggle,push,mic,mouse,clock,reset,in,indicate);
 	StringRegister InputString(in,clock,reset,out);
 	
 endmodule
 
-module InputType(toggle,push,mic,mouse,clock,reset,out);
+module InputType(toggle,push,mic,mouse,clock,reset,out,indicate);
 	input toggle;
 	input push;
 	input mic;
@@ -405,6 +404,7 @@ module InputType(toggle,push,mic,mouse,clock,reset,out);
 	input reset;
 	
 	output reg [2:0] out;
+	output indicate;
 	
 	wire input1, input2, input3, input4;
 	
@@ -412,6 +412,8 @@ module InputType(toggle,push,mic,mouse,clock,reset,out);
 	InputListener PushSwitchListener(push,clock,reset,input2);
 	InputListener MicrophoneListener(mic,clock,reset,input3);
 	InputListener MouseListener(mouse,clock,reset,input4);
+	
+	assign indicate = (input1 | input2 | input3 | input4);
 	
 	always @(posedge clock)
 	begin
@@ -448,11 +450,11 @@ module StringRegister(in,clock,reset,out);
 			out <= 64'd0;
 		else begin
 			if (in == 3'd1)
-				out <= (out << 2'd2) + 2'b10000;
+				out <= (out << 4'd5) + 5'b10000;
 			else if (in == 3'd2)
-				out <= (out << 2'd3) + 3'b11000;
+				out <= (out << 4'd5) + 5'b11000;
 			else if (in == 3'd3)
-				out <= (out << 3'd4) + 4'b11100;
+				out <= (out << 3'd5) + 5'b11100;
 			else if (in == 3'd4)
 				out <= (out << 3'd5) + 5'b11110;
 		end
