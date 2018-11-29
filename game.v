@@ -78,7 +78,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	output [2:0] prompts;
 	output flash;
 	
-	wire [63:0] user_string, comp_string;
+	wire [99:0] user_string, comp_string;
 	wire start_display, finish_display, add_to_string, reset_IO;
 	wire ld_lives, ld_score, ld_alu_out;
 	wire [1:0] alu_sel_a, alu_sel_b, alu_func;
@@ -226,7 +226,7 @@ module control(go,display_done,no_lives,check,clock,reset,display,generate_strin
 endmodule
 
 module DisplayModule(bstring,go,clock,reset,out,done);
-	input [63:0] bstring;
+	input [99:0] bstring;
 	input go;
 	input clock;
 	input reset;
@@ -236,7 +236,7 @@ module DisplayModule(bstring,go,clock,reset,out,done);
 	
 	wire clk,start;
 	wire [4:0] displayBits;
-	wire [63:0] outstring;
+	wire [99:0] outstring;
 	
 	NoLeadingZeroRegister ZeroBit(bstring,go,clock,reset,outstring,start);
 	RateDivider Hz2(26'd50000000 - 1'b1,clock,start,clk);
@@ -258,21 +258,21 @@ module DisplayModule(bstring,go,clock,reset,out,done);
 endmodule
 
 module OutputRegister(in,start,clock,reset,out);
-	input [63:0] in;
+	input [99:0] in;
 	input start;
 	input clock;
 	input reset;
 	output reg [4:0] out;
 	
-	reg [63:0] val2;
+	reg [99:0] val2;
 	reg mem;
 	
 	always @(posedge clock)
 	begin
 		if (~reset | (~start & mem))
 			begin
-				out <= 64'd0;
-				val2 <= 64'd0;
+				out <= 100'd0;
+				val2 <= 100'd0;
 				mem <= 1'b0;
 			end
 		else
@@ -284,7 +284,7 @@ module OutputRegister(in,start,clock,reset,out);
 					end
 				else
 				begin
-					out <= val2[63:59];
+					out <= val2[99:95];
 					val2 <= val2 << 3'd5;
 				end
 			end
@@ -293,20 +293,20 @@ module OutputRegister(in,start,clock,reset,out);
 endmodule
 
 module NoLeadingZeroRegister(in,start,clock,reset,out,trigger);
-	input [63:0] in;
+	input [99:0] in;
 	input start;
 	input clock;
 	input reset;
-	output reg [63:0] out;
+	output reg [99:0] out;
 	output reg trigger;
 	
-	reg [63:0] val1;
+	reg [99:0] val1;
 
 	always @(posedge clock)
 	begin
 		if (~reset)
 			begin
-				val1 <= 64'd0;
+				val1 <= 100'd0;
 				trigger <= 1'b0;
 			end
 		else if (start)
@@ -314,7 +314,7 @@ module NoLeadingZeroRegister(in,start,clock,reset,out,trigger);
 				val1 <= in;
 				trigger <= 1'b0;
 			end
-		else if (val1[63] != 1'b1)
+		else if (val1[99] != 1'b1)
 				val1 <= val1 << 1'b1;
 		else
 			begin
@@ -344,7 +344,7 @@ module StringGenerator(inc,clock,reset,out);
 	input clock;
 	input reset;
 	
-	output reg [63:0] out;
+	output reg [99:0] out;
 	
 	wire [1:0] counter;
 	reg [3:0] in;
@@ -355,7 +355,7 @@ module StringGenerator(inc,clock,reset,out);
 	begin
 		if (~reset)
 			begin
-				in <= 64'd0;
+				in <= 100'd0;
 			end
 		else if (counter == 2'd0)
 			begin
@@ -385,7 +385,7 @@ module InputModule(toggle,push,mic,mouse,clock,reset,out,indicate);
 	input clock;
 	input reset;
 	
-	output [63:0] out;
+	output [99:0] out;
 	output indicate;
 	
 	wire [2:0] in;
@@ -442,15 +442,15 @@ module StringRegister(in,clock,reset,out);
 	input clock;
 	input reset;
 	
-	output reg [63:0] out;
+	output reg [99:0] out;
 	
 	always @(negedge clock)
 	begin
 		if (~reset)
-			out <= 64'd0;
+			out <= 100'd0;
 		else begin
 			if (in == 3'd1)
-				out <= (out << 4'd5) + 5'b10000;
+				out <= (out << 3'd5) + 5'b10000;
 			else if (in == 3'd2)
 				out <= (out << 4'd5) + 5'b11000;
 			else if (in == 3'd3)
