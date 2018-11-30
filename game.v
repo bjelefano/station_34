@@ -79,7 +79,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	output [1:0] flash;
 	
 	wire [99:0] user_string, comp_string;
-	wire start_display, add_to_string, reset_IO, display_done;
+	wire start_display, add_to_string, reset_IO, display_done, done_string;
 	wire ld_lives, ld_score, ld_alu_out, clk2;
 	wire [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
@@ -94,6 +94,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	control c0(
 		.go(go),
 		.display_done(display_done),
+		.string_dome(done_string),
 		.no_lives(curr_lives == 1'b0),
 		.check(user_string == comp_string),
 		.clock(clk2),
@@ -130,6 +131,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 		.clock(clk2),
 		.reset(reset_n),
 		.out(comp_string)
+		.indicate(done_string)
 	);
 	
 	datapath d0(
@@ -145,7 +147,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	);
 endmodule
 
-module control(go,display_done,no_lives,check,clock,reset,display,generate_string,reset_user,ld_lives,ld_score,alu_sel_a,alu_sel_b,alu_func);
+module control(go,display_done,string_done,no_lives,check,clock,reset,display,generate_string,reset_user,ld_lives,ld_score,alu_sel_a,alu_sel_b,alu_func);
 	input go;
 	input display_done;
 	input no_lives;
@@ -186,7 +188,7 @@ module control(go,display_done,no_lives,check,clock,reset,display,generate_strin
 			START : next_state = go ? START_WAIT : START;
 			START_WAIT : next_state = go ? START_WAIT : NEXT_LEVEL;
 			NEXT_LEVEL : next_state = NEXT_WAIT;
-			NEXT_WAIT : next_state = DISPLAY;
+			NEXT_WAIT : next_state = string_done ? DISPLAY : NEXT_WAIT;
 			DISPLAY : next_state = ~display_done ? DISPLAY_WAIT : DISPLAY;
 			DISPLAY_WAIT : next_state = display_done ? USER_INPUT : DISPLAY_WAIT;
 			USER_INPUT : next_state = go ? USER_INPUT_WAIT : USER_INPUT;
@@ -361,16 +363,17 @@ module Counter(clock,reset,out);
 	end
 endmodule
 
-module StringGenerator(inc,clock,reset,out);
+module StringGenerator(inc,clock,reset,out,indicate);
 	input inc;
 	input clock;
 	input reset;
 	
 	output reg [99:0] out;
+	output reg indicate;
 	
 	wire [1:0] counter;
-	wire toggle;
 	reg [3:0] in;
+	reg mem, toggle;
 	
 	Counter RNG(clock, reset, counter);
 	
@@ -379,25 +382,45 @@ module StringGenerator(inc,clock,reset,out);
 		if (~reset)
 			begin
 				in <= 100'd0;
+				toggle <= 1'b0
 			end
 		else if (counter == 2'd0)
 			begin
 				out <= (out << 3'd5) + 5'b10000;
+				toggle <= ~toggle;
 			end
 		else if (counter == 2'd1)
 			begin
 				out <= (out << 3'd5) + 5'b11000;
+				toggle <= ~toggle;
 			end
 		else if (counter == 2'd2)
 			begin
 				out <= (out << 3'd5) + 5'b11100;
+				toggle <= ~toggle;
 			end
 		else if (counter == 2'd3)
 			begin
 				out <= (out << 3'd5) + 5'b11110;
+				toggle <= ~toggle;
 			end
 	end
-	
+
+	always @(posedge clock)
+	begin
+		if (~reset)
+			begin
+				indicate <= 1'b0;
+				mem <= 1'b0;
+			end
+		else if (mem != toggle)
+			begin
+				indicate <= 1'b1;
+				mem <= toggle;
+			end
+		else 
+			indicate <= 1'b0;
+	end
 endmodule
 
 module InputModule(toggle,push,mic,mouse,clock,reset,out,indicate);
