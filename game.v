@@ -85,7 +85,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	
 	assign flash[0] = display_done;
 	
-	RateDivider clk2(
+	RateDivider clock(
 		.in(26'd50000000 - 1'b1),
 		.clockIn(clk),
 		.reset(reset_n),
@@ -94,7 +94,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	control c0(
 		.go(go),
 		.display_done(display_done),
-		.string_dome(done_string),
+		.string_done(done_string),
 		.no_lives(curr_lives == 1'b0),
 		.check(user_string == comp_string),
 		.clock(clk2),
@@ -130,7 +130,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 		.inc(add_to_string),
 		.clock(clk2),
 		.reset(reset_n),
-		.out(comp_string)
+		.out(comp_string),
 		.indicate(done_string)
 	);
 	
@@ -150,6 +150,7 @@ endmodule
 module control(go,display_done,string_done,no_lives,check,clock,reset,display,generate_string,reset_user,ld_lives,ld_score,alu_sel_a,alu_sel_b,alu_func);
 	input go;
 	input display_done;
+	input string_done;
 	input no_lives;
 	input check;
 	input clock;
@@ -164,9 +165,9 @@ module control(go,display_done,string_done,no_lives,check,clock,reset,display,ge
 	START = 4'd0,
 	START_WAIT = 4'd1,
 	NEXT_LEVEL = 4'd2,
-	NEXT_WAIT = 4'd3
+	NEXT_WAIT = 4'd3,
 	DISPLAY = 4'd4,
-	DISPLAY_WAIT 4'd5,
+	DISPLAY_WAIT = 4'd5,
 	USER_INPUT = 4'd6,
 	USER_INPUT_WAIT = 4'd7,
 	CHECK = 4'd8,
@@ -220,14 +221,14 @@ module control(go,display_done,string_done,no_lives,check,clock,reset,display,ge
 			DISPLAY : display = 1'b1;
 			SCORE_INCREMENT: 
 			begin
-				ld_score = 1'b1; ld_alu_out = 1'b1;
 				alu_sel_a = 2'd1; alu_func = 2'd0;
+				ld_score = 1'b1; 
 				reset_user = 1'b0;
 			end
 			LIFE_DECREMENT: 
 			begin
-				ld_lives = 1'b1; ld_alu_out = 1'b1;
 				alu_sel_a = 2'd0; alu_func = 2'd1;
+				ld_lives = 1'b1;
 				reset_user = 1'b0;
 			end
 		endcase
@@ -295,7 +296,7 @@ module OutputRegister(in,start,clock,reset,out);
 	begin
 		if (~reset | (~start & mem))
 			begin
-				out <= 100'd0;
+				out <= 4'd0;
 				val2 <= 100'd0;
 				mem <= 1'b0;
 			end
@@ -307,10 +308,10 @@ module OutputRegister(in,start,clock,reset,out);
 						mem <= 1'b1;
 					end
 				else
-				begin
-					out <= val2[99:95];
-					val2 <= val2 << 3'd5;
-				end
+					begin
+						out <= val2[99:95];
+						val2 <= val2 << 3'd5;
+					end
 			end
 	end
 	
@@ -359,7 +360,7 @@ module Counter(clock,reset,out);
 		if (~reset)
 			out <= 2'd0;
 		else
-			out <= (out < 3'd4) ? out + 1'b1 : 2'd0;
+			out <= (out < 3'd4) ? (out + 1'b1) : 2'd0;
 	end
 endmodule
 
@@ -372,7 +373,6 @@ module StringGenerator(inc,clock,reset,out,indicate);
 	output reg indicate;
 	
 	wire [1:0] counter;
-	reg [3:0] in;
 	reg mem, toggle;
 	
 	Counter RNG(clock, reset, counter);
@@ -381,8 +381,8 @@ module StringGenerator(inc,clock,reset,out,indicate);
 	begin
 		if (~reset)
 			begin
-				in <= 100'd0;
-				toggle <= 1'b0
+				out <= 100'd0;
+				toggle <= 1'b0;
 			end
 		else if (counter == 2'd0)
 			begin
