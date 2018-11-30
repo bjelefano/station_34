@@ -40,7 +40,7 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT);
 		.curr_score(score),
 		.curr_lives(lives),
 		.prompts(LEDR[2:0]),
-		.flash(LEDR[9])
+		.flash(LEDR[9:8])
 	);
 	
 	mouse_tracker mouse(
@@ -76,26 +76,33 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	output [7:0] curr_score;
 	output [3:0] curr_lives;
 	output [2:0] prompts;
-	output flash;
+	output [1:0] flash;
 	
 	wire [99:0] user_string, comp_string;
-	wire start_display, finish_display, add_to_string, reset_IO;
-	wire ld_lives, ld_score, ld_alu_out;
+	wire start_display, add_to_string, reset_IO, display_done;
+	wire ld_lives, ld_score, ld_alu_out, clk2;
 	wire [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
+	assign flash[0] = display_done;
+	
+	RateDivider clk2(
+		.in(26'd50000000 - 1'b1),
+		.clockIn(clk),
+		.reset(reset_n),
+		.clockOut(clk2)
+	);
 	control c0(
 		.go(go),
-		.display_done(finish_display),
+		.display_done(display_done),
 		.no_lives(curr_lives == 1'b0),
 		.check(user_string == comp_string),
-		.clock(clk),
+		.clock(clk2),
 		.reset(reset_n),
 		.display(start_display),
 		.generate_string(add_to_string),
 		.reset_user(reset_IO),
 		.ld_lives(ld_lives),
 		.ld_score(ld_score),
-		.ld_alu_out(ld_alu_out),
 		.alu_sel_a(alu_sel_a),
 		.alu_sel_b(alu_sel_b),
 		.alu_func(alu_func)
@@ -105,10 +112,10 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 		.push(inputs[1]),
 		.mic(inputs[2]),
 		.mouse(inputs[3]),
-		.clock(clk),
-		.reset(reset_n | reset_IO),
+		.clock(clk2),
+		.reset(reset_n & reset_IO),
 		.out(user_string),
-		.indicate(flash)
+		.indicate(flash[1])
 	);
 	DisplayModule Display(
 		.bstring(comp_string),
@@ -116,11 +123,11 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 		.clock(clk),
 		.reset(reset_n),
 		.out(prompts),
-		.done(finish_display)
+		.done(display_done)
 	);
 	StringGenerator Comp(
 		.inc(add_to_string),
-		.clock(clk),
+		.clock(clk2),
 		.reset(reset_n),
 		.out(comp_string)
 	);
@@ -130,16 +137,15 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 		.lives(curr_lives),
 		.ld_score(ld_score),
 		.ld_lives(ld_lives),
-		.ld_alu_out(ld_alu_out),
 		.alu_sel_a(ld_sel_a),
 		.alu_sel_b(ld_sel_b),
 		.alu_func(alu_func),
-		.clock(clk),
+		.clock(clk2),
 		.reset(reset_n)
 	);
 endmodule
 
-module control(go,display_done,no_lives,check,clock,reset,display,generate_string,reset_user,ld_lives,ld_score,ld_alu_out,alu_sel_a,alu_sel_b,alu_func);
+module control(go,display_done,no_lives,check,clock,reset,display,generate_string,reset_user,ld_lives,ld_score,alu_sel_a,alu_sel_b,alu_func);
 	input go;
 	input display_done;
 	input no_lives;
@@ -147,7 +153,7 @@ module control(go,display_done,no_lives,check,clock,reset,display,generate_strin
 	input clock;
 	input reset;
 	
-	output reg display,ld_lives,ld_score,ld_alu_out, generate_string, reset_user;
+	output reg display,ld_lives,ld_score, generate_string, reset_user;
 	output reg [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
 	reg [3:0] current_state, next_state;
@@ -156,20 +162,20 @@ module control(go,display_done,no_lives,check,clock,reset,display,generate_strin
 	START = 4'd0,
 	START_WAIT = 4'd1,
 	NEXT_LEVEL = 4'd2,
-	DISPLAY = 4'd3,
-	USER_INPUT = 4'd4,
-	USER_INPUT_WAIT = 4'd5,
-	CHECK = 4'd6,
-	SCORE_INCREMENT = 4'd7,
-	LIFE_DECREMENT = 4'd8,
-	GAME_OVER = 4'd9;
+	NEXT_WAIT = 4'd3
+	DISPLAY = 4'd4,
+	DISPLAY_WAIT 4'd5,
+	USER_INPUT = 4'd6,
+	USER_INPUT_WAIT = 4'd7,
+	CHECK = 4'd8,
+	SCORE_INCREMENT = 4'd9,
+	LIFE_DECREMENT = 4'd10,
+	GAME_OVER = 4'd11;
 	
 	always @(posedge clock)
 	begin: state_FFs
 		if(~reset)
-		begin
-			current_state <= START;
-		end
+			current_state <= 4'd0;
 		else
 			current_state <= next_state;
 	end
@@ -179,8 +185,10 @@ module control(go,display_done,no_lives,check,clock,reset,display,generate_strin
 		case(current_state)
 			START : next_state = go ? START_WAIT : START;
 			START_WAIT : next_state = go ? START_WAIT : NEXT_LEVEL;
-			NEXT_LEVEL : next_state = DISPLAY;
-			DISPLAY : next_state = display_done ? USER_INPUT : DISPLAY;
+			NEXT_LEVEL : next_state = NEXT_WAIT;
+			NEXT_WAIT : next_state = DISPLAY;
+			DISPLAY : next_state = ~display_done ? DISPLAY_WAIT : DISPLAY;
+			DISPLAY_WAIT : next_state = display_done ? USER_INPUT : DISPLAY_WAIT;
 			USER_INPUT : next_state = go ? USER_INPUT_WAIT : USER_INPUT;
 			USER_INPUT_WAIT : next_state = go ? USER_INPUT_WAIT : CHECK;
 			CHECK : next_state = check ? SCORE_INCREMENT : LIFE_DECREMENT;
@@ -195,10 +203,9 @@ module control(go,display_done,no_lives,check,clock,reset,display,generate_strin
 		display = 1'b0;
 		ld_lives = 1'b0;
 		ld_score = 1'b0;
-		ld_alu_out = 1'b0;
-		alu_sel_a = 2'd0;
-		alu_sel_b = 2'd0;
-		alu_func = 2'd0;
+		alu_sel_a = 2'd3;
+		alu_sel_b = 2'd3;
+		alu_func = 2'd3;
 		generate_string = 1'b0;
 		reset_user = 1'b1;
 		
@@ -242,18 +249,33 @@ module DisplayModule(bstring,go,clock,reset,out,done);
 	RateDivider Hz2(26'd50000000 - 1'b1,clock,start,clk);
 	OutputRegister MSBit(outstring,start,clk,reset,displayBits);
 		
-	always @(displayBits)
+	always @(posedge clk)
 	begin
 		if (displayBits == 5'b10000)
-			out = 3'b001;
+			begin
+				out = 3'b001;
+				done = 1'b0;
+			end
 		else if (displayBits == 5'b11000)
-			out = 3'b010;
+			begin
+				out = 3'b010;
+				done = 1'b0;
+			end
 		else if (displayBits == 5'b11100)
-			out = 3'b011;
+			begin
+				out = 3'b011;
+				done = 1'b0;
+			end
 		else if (displayBits == 5'b11110)
-			out = 3'b100;
+			begin
+				out = 3'b100;
+				done = 1'b0;
+			end
 		else 
-			out = 3'b000;
+			begin
+				out = 3'b000;
+				done = 1'b1;
+			end
 	end
 endmodule
 
@@ -314,13 +336,13 @@ module NoLeadingZeroRegister(in,start,clock,reset,out,trigger);
 				val1 <= in;
 				trigger <= 1'b0;
 			end
-		else if (val1[99] != 1'b1)
-				val1 <= val1 << 1'b1;
-		else
+		else if (val1[99] == 1'b1)
 			begin
 				out <= val1;
 				trigger <= 1'b1;
 			end
+		else
+			val1 <= val1 << 1'b1;
 	end
 	
 endmodule
@@ -335,7 +357,7 @@ module Counter(clock,reset,out);
 		if (~reset)
 			out <= 2'd0;
 		else
-			out <= (out != 2'd3) ? out + 1'b1 : 2'd0;
+			out <= (out < 3'd4) ? out + 1'b1 : 2'd0;
 	end
 endmodule
 
@@ -347,6 +369,7 @@ module StringGenerator(inc,clock,reset,out);
 	output reg [99:0] out;
 	
 	wire [1:0] counter;
+	wire toggle;
 	reg [3:0] in;
 	
 	Counter RNG(clock, reset, counter);
@@ -385,25 +408,7 @@ module InputModule(toggle,push,mic,mouse,clock,reset,out,indicate);
 	input clock;
 	input reset;
 	
-	output [99:0] out;
-	output indicate;
-	
-	wire [2:0] in;
-	
-	InputType IOType(toggle,push,mic,mouse,clock,reset,in,indicate);
-	StringRegister InputString(in,clock,reset,out);
-	
-endmodule
-
-module InputType(toggle,push,mic,mouse,clock,reset,out,indicate);
-	input toggle;
-	input push;
-	input mic;
-	input mouse;
-	input clock;
-	input reset;
-	
-	output reg [2:0] out;
+	output reg [99:0] out;
 	output indicate;
 	
 	wire input1, input2, input3, input4;
@@ -415,49 +420,28 @@ module InputType(toggle,push,mic,mouse,clock,reset,out,indicate);
 	
 	assign indicate = (input1 | input2 | input3 | input4);
 	
-	always @(posedge clock)
+	always @(posedge indicate, negedge reset)
 	begin
 		if (~reset)
 			begin
-				out <= 3'd0;
+				out <= 100'd0;
 			end
-		else
+		else if (input1)
 			begin
-				if (input1)
-					out <= 3'd1;
-				else if (input2)
-					out <= 3'd2;
-				else if (input3)
-					out <= 3'd3;
-				else if (input4)
-					out <= 3'd4;
-				else 
-					out <= 3'd0;
-			end
-	end
-endmodule
-
-module StringRegister(in,clock,reset,out);
-	input [2:0] in;
-	input clock;
-	input reset;
-	
-	output reg [99:0] out;
-	
-	always @(negedge clock)
-	begin
-		if (~reset)
-			out <= 100'd0;
-		else begin
-			if (in == 3'd1)
 				out <= (out << 3'd5) + 5'b10000;
-			else if (in == 3'd2)
-				out <= (out << 4'd5) + 5'b11000;
-			else if (in == 3'd3)
+			end
+		else if (input2)
+			begin
+				out <= (out << 3'd5) + 5'b11000;
+			end
+		else if (input3)
+			begin
 				out <= (out << 3'd5) + 5'b11100;
-			else if (in == 3'd4)
+			end
+		else if (input4)
+			begin
 				out <= (out << 3'd5) + 5'b11110;
-		end
+			end
 	end
 endmodule
 
@@ -509,24 +493,14 @@ module datapath(score,lives,ld_score,ld_lives,ld_alu_out,alu_sel_a,alu_sel_b,alu
 		if (~reset)
 			begin
 				score <= 8'd0;
-				lives <= 4'd0;
+				lives <= 4'd3;
 			end
 		else
 		begin
 			if (ld_score)
-				begin
-					if (ld_alu_out)
-						score <= alu_out;
-					else
-						score <= 8'd0;
-				end
+				score <= alu_out;
 			if (ld_lives)
-				begin
-					if (ld_alu_out)
-						lives <= alu_out[3:0];
-					else
-						score <= 4'd3;
-				end
+					lives <= alu_out[3:0];
 		end
 	end
 	
