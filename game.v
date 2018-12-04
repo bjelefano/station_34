@@ -1,14 +1,42 @@
 // Adjust based on the machine
 
 `include "D:/Quartus/labs/lab_project/PS2_Mouse_Controller.v"
+`include "D:/Quartus/labs/lab_project/display.v"
+`include "D:/Quartus/labs/lab_project/vga_adapter/vga_adapter.v"
+`include "D:/Quartus/labs/lab_project/vga_adapter/vga_address_translator.v"
+`include "D:/Quartus/labs/lab_project/vga_adapter/vga_controller.v"
+`include "D:/Quartus/labs/lab_project/vga_adapter/vga_pll.v"
 
-module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT);
+module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT
+	/*
+		VGA_CLK,   						//	VGA Clock
+		VGA_HS,							//	VGA H_SYNC
+		VGA_VS,							//	VGA V_SYNC
+		VGA_BLANK_N,						//	VGA BLANK
+		VGA_SYNC_N,						//	VGA SYNC
+		VGA_R,   						//	VGA Red[9:0]
+		VGA_G,	 						//	VGA Green[9:0]
+		VGA_B   						//	VGA Blue[9:0]
+	*/
+	);
+	
 	input [9:0] SW;
 	input [3:0] KEY;
 	input CLOCK_50;
 	input AUD_ADCDAT;
 	output [9:0] LEDR;
 	output [6:0] HEX0, HEX4, HEX5;
+	
+	/*
+	output			VGA_CLK;   				//	VGA Clock
+	output			VGA_HS;					//	VGA H_SYNC
+	output			VGA_VS;					//	VGA V_SYNC
+	output			VGA_BLANK_N;				//	VGA BLANK
+	output			VGA_SYNC_N;				//	VGA SYNC
+	output	[9:0]	VGA_R;   				//	VGA Red[9:0]
+	output	[9:0]	VGA_G;	 				//	VGA Green[9:0]
+	output	[9:0]	VGA_B;   				//	VGA Blue[9:0]
+	*/
 	
 	wire [7:0] score;
 	wire [17:0] mvmt;
@@ -32,6 +60,31 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT);
 			mouseMVMT <= 1'b0;
 	end
 	
+	wire [7:0] x,y;
+	wire [2:0] colour;
+	wire write;
+	/*
+	vga_adapter VGA(
+			.resetn(SW[9]),
+			.clock(CLOCK_50),
+			.colour(colour),
+			.x(x),
+			.y(y),
+			.plot(write),
+			.VGA_R(VGA_R),
+			.VGA_G(VGA_G),
+			.VGA_B(VGA_B),
+			.VGA_HS(VGA_HS),
+			.VGA_VS(VGA_VS),
+			.VGA_BLANK(VGA_BLANK_N),
+			.VGA_SYNC(VGA_SYNC_N),
+			.VGA_CLK(VGA_CLK));
+		defparam VGA.RESOLUTION = "160x120";
+		defparam VGA.MONOCHROME = "FALSE";
+		defparam VGA.BITS_PER_COLOUR_CHANNEL = 1;
+		defparam VGA.BACKGROUND_IMAGE = "black.mif";
+	*/
+	
 	top Game(
 		.inputs({SW[3],SW[2],SW[1],SW[0]}),
 		.go(~KEY[0]),
@@ -39,8 +92,11 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT);
 		.reset_n(SW[9]),
 		.curr_score(score),
 		.curr_lives(lives),
-		.prompts(LEDR[2:0]),
-		.flash(LEDR[9:8])
+		.x(x),
+		.y(y),
+		.flash(LEDR[9:8]),
+		.write(write),
+		.colour(colour)
 	);
 	
 	mouse_tracker mouse(
@@ -67,7 +123,8 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT);
 	);
 endmodule
 
-module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
+
+module top(inputs,go,clk,reset_n,curr_score,curr_lives,x,y,flash,write,colour);
 	input [3:0] inputs;
 	input go;
 	input clk;
@@ -75,8 +132,10 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	
 	output [7:0] curr_score;
 	output [3:0] curr_lives;
-	output [2:0] prompts;
+	output [7:0] x, y;
 	output [1:0] flash;
+	output write;
+	output [2:0] colour;
 	
 	wire [99:0] user_string, comp_string;
 	wire start_display, add_to_string, reset_IO, display_done, done_string, zero_done;
@@ -85,8 +144,29 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 	
 	assign flash[0] = display_done;
 	
+	wire [15:0] position;
+	wire [2:0] colour, prompts;
+	reg promptChange;
+	reg [2:0] mem;
+	
+	always @(posedge clk)
+	begin
+		if (~reset_n)
+			begin
+				promptChange <= 1'b0;
+				mem <= 3'd0;
+			end
+		else if (prompts != mem)
+			begin
+				promptChange <= 1'b1;
+				mem <= prompts;
+			end
+		else
+			promptChange <= 1'b0;
+	end
+	
 	RateDivider clock(
-		.in(26'd25000000 - 1'b1),
+		.in(26'd50000000 - 1'b1),
 		.clockIn(clk),
 		.reset(reset_n),
 		.clockOut(clk2)
@@ -127,6 +207,20 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,prompts,flash);
 		.out(prompts),
 		.done(display_done),
 		.zero_done(zero_done)
+	);
+	LUD posCol(
+		.in(prompts),
+		.position(position), 
+		.colour(colour)
+	);
+	vgaDisplay screen(
+		.start(promptChange),
+		.in(position),
+		.reset(reset_n),
+		.clock(clk),
+		.x(x),
+		.y(y),
+		.plot(write)
 	);
 	StringGenerator Comp(
 		.inc(add_to_string),
@@ -236,6 +330,49 @@ module control(go,display_done,zero_done,string_done,no_lives,check,clock,reset,
 	end
 endmodule
 
+module LUD(in,position, colour);
+	input [2:0] in;
+	output reg [15:0] position;
+	output reg [2:0] colour;
+	
+	always @(in)
+	begin
+		case(in)
+			3'd0:
+				begin
+					position = 16'd0;
+					colour = 3'd1;
+				end
+			3'd1: 
+				begin
+					position = {8'd20, 8'd58};
+					colour = (colour + 1'b1 == 3'd0) ? 3'd1 : colour + 1'b1;
+				end
+			3'd2: 
+				begin
+					position = {8'd78, 8'd20};
+					colour = (colour + 1'b1 == 3'd0) ? 3'd1 : colour + 1'b1;
+				end
+			3'd3:	
+				begin
+					position = {8'd156, 8'd58};
+					colour = (colour + 1'b1 == 3'd0) ? 3'd1 : colour + 1'b1;
+				end
+			3'd4:	
+				begin
+					position = {8'd78, 8'd100};
+					colour = (colour + 1'b1 == 3'd0) ? 3'd1 : colour + 1'b1;
+				end
+			default:
+				begin
+					position = 16'd0;
+					colour = 3'd1;
+				end
+		endcase
+	end
+endmodule 
+
+
 module DisplayModule(bstring,go,clock,reset,out,done,zero_done);
 	input [99:0] bstring;
 	input go;
@@ -251,8 +388,8 @@ module DisplayModule(bstring,go,clock,reset,out,done,zero_done);
 	wire [99:0] outstring;
 	
 	NoLeadingZeroRegister ZeroBit(bstring,go,clock,reset,outstring,start);
-	RateDivider Hz2(26'd25000000 - 1'b1,clock,start,clk);
-	OutputRegister MSBit(outstring,start,clk,reset,displayBits);
+	RateDivider Hz2(26'd50000000 - 1'b1,clock,reset,clk);
+	OutputRegister MSBit(outstring,start,clk,(reset | start),displayBits);
 	assign zero_done = start;
 		
 	always @(posedge clk)
@@ -293,23 +430,18 @@ module OutputRegister(in,start,clock,reset,out);
 	output reg [4:0] out;
 	
 	reg [99:0] val2;
-	reg mem;
 	
-	always @(posedge clock)
+	always @(posedge clock, posedge start)
 	begin
-		if (~reset | (~start & mem))
+		if (~reset)
 			begin
 				out <= 4'd0;
 				val2 <= 100'd0;
-				mem <= 1'b0;
 			end
 		else
 			begin
-				if (start & ~mem)
-					begin
+				if (start)
 						val2 <= in;
-						mem <= 1'b1;
-					end
 				else
 					begin
 						out <= val2[99:95];

@@ -1,0 +1,28 @@
+
+
+D:/Quartus/labs/lab7/lab7_part2/vga_adapter/vga_pll.v
+
+Dec 04 01AM:03:55>: Error in CNX file format.
+
+Error messages are listed in file
+D:/Quartus/labs/lab7/lab7_part2/vga_adapter/vga_pll.cnxerr.
+
+Can't create the custom megafunction variation file(s)
+
+D:/Quartus/labs/lab7/lab7_part2/vga_adapter/vga_pll.v
+
+Dec 04 01AM:03:56>: Error in CNX file format.
+
+Error messages are listed in file
+D:/Quartus/labs/lab7/lab7_part2/vga_adapter/vga_pll.cnxerr.
+
+Can't create the custom megafunction variation file(s)
+
+D:/Quartus/labs/lab7/lab7_part2/vga_adapter/vga_pll.v
+
+Dec 04 01AM:04:12>: Error in CNX file format.
+
+Error messages are listed in file
+D:/Quartus/labs/lab7/lab7_part2/vga_adapter/vga_pll.cnxerr.
+
+Can't create the custom megafunction variation file(s)
