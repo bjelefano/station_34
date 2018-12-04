@@ -56,8 +56,6 @@ module displayCTRL(go,clock,reset_n,load_x,load_y,load_alu,alu_op,alu_sel_a,alu_
 		if (~reset_n)
 			begin
 				cur_state <= 4'b0000;
-				x_count <= 2'b00;
-				y_count <= 2'b00;
 			end
 		else
 			cur_state <= next_state;

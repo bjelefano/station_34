@@ -1,14 +1,13 @@
 // Adjust based on the machine
 
-`include "D:/Quartus/labs/lab_project/PS2_Mouse_Controller.v"
-`include "D:/Quartus/labs/lab_project/display.v"
-`include "D:/Quartus/labs/lab_project/vga_adapter/vga_adapter.v"
-`include "D:/Quartus/labs/lab_project/vga_adapter/vga_address_translator.v"
-`include "D:/Quartus/labs/lab_project/vga_adapter/vga_controller.v"
-`include "D:/Quartus/labs/lab_project/vga_adapter/vga_pll.v"
+`include "C:/DESL/Quartus18/lab_project/PS2_Mouse_Controller.v"
+`include "C:/DESL/Quartus18/lab_project/display.v"
+`include "C:/DESL/Quartus18/lab_project/vga_adapter/vga_adapter.v"
+`include "C:/DESL/Quartus18/lab_project/vga_adapter/vga_address_translator.v"
+`include "C:/DESL/Quartus18/lab_project/vga_adapter/vga_controller.v"
+`include "C:/DESL/Quartus18/lab_project/lab_project/vga_adapter/vga_pll.v"
 
-module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT
-	/*
+module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT,
 		VGA_CLK,   						//	VGA Clock
 		VGA_HS,							//	VGA H_SYNC
 		VGA_VS,							//	VGA V_SYNC
@@ -17,7 +16,6 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT
 		VGA_R,   						//	VGA Red[9:0]
 		VGA_G,	 						//	VGA Green[9:0]
 		VGA_B   						//	VGA Blue[9:0]
-	*/
 	);
 	
 	input [9:0] SW;
@@ -27,7 +25,6 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT
 	output [9:0] LEDR;
 	output [6:0] HEX0, HEX4, HEX5;
 	
-	/*
 	output			VGA_CLK;   				//	VGA Clock
 	output			VGA_HS;					//	VGA H_SYNC
 	output			VGA_VS;					//	VGA V_SYNC
@@ -36,7 +33,6 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT
 	output	[9:0]	VGA_R;   				//	VGA Red[9:0]
 	output	[9:0]	VGA_G;	 				//	VGA Green[9:0]
 	output	[9:0]	VGA_B;   				//	VGA Blue[9:0]
-	*/
 	
 	wire [7:0] score;
 	wire [17:0] mvmt;
@@ -63,7 +59,7 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT
 	wire [7:0] x,y;
 	wire [2:0] colour;
 	wire write;
-	/*
+	
 	vga_adapter VGA(
 			.resetn(SW[9]),
 			.clock(CLOCK_50),
@@ -83,7 +79,7 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT
 		defparam VGA.MONOCHROME = "FALSE";
 		defparam VGA.BITS_PER_COLOUR_CHANNEL = 1;
 		defparam VGA.BACKGROUND_IMAGE = "black.mif";
-	*/
+	
 	
 	top Game(
 		.inputs({SW[3],SW[2],SW[1],SW[0]}),
@@ -431,7 +427,7 @@ module OutputRegister(in,start,clock,reset,out);
 	
 	reg [99:0] val2;
 	
-	always @(posedge clock, posedge start)
+	always @(posedge clock, posedge start, negedge reset)
 	begin
 		if (~reset)
 			begin
