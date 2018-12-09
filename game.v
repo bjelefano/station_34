@@ -1,38 +1,16 @@
 // Adjust based on the machine
 
-`include "C:/DESL/Quartus18/lab_project/PS2_Mouse_Controller.v"
-`include "C:/DESL/Quartus18/lab_project/display.v"
-`include "C:/DESL/Quartus18/lab_project/vga_adapter/vga_adapter.v"
-`include "C:/DESL/Quartus18/lab_project/vga_adapter/vga_address_translator.v"
-`include "C:/DESL/Quartus18/lab_project/vga_adapter/vga_controller.v"
-`include "C:/DESL/Quartus18/lab_project/lab_project/vga_adapter/vga_pll.v"
+`include "C:/DESL/Quartus18/lab/lab_project/PS2_Mouse_Controller.v"
+`include "C:/DESL/Quartus18/lab/lab_project/display.v"
 
-module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT,
-		VGA_CLK,   						//	VGA Clock
-		VGA_HS,							//	VGA H_SYNC
-		VGA_VS,							//	VGA V_SYNC
-		VGA_BLANK_N,						//	VGA BLANK
-		VGA_SYNC_N,						//	VGA SYNC
-		VGA_R,   						//	VGA Red[9:0]
-		VGA_G,	 						//	VGA Green[9:0]
-		VGA_B   						//	VGA Blue[9:0]
-	);
+module game(SW,KEY,LEDR,HEX0,HEX2,HEX4,HEX5,CLOCK_50,AUD_ADCDAT);
 	
 	input [9:0] SW;
 	input [3:0] KEY;
 	input CLOCK_50;
 	input AUD_ADCDAT;
 	output [9:0] LEDR;
-	output [6:0] HEX0, HEX4, HEX5;
-	
-	output			VGA_CLK;   				//	VGA Clock
-	output			VGA_HS;					//	VGA H_SYNC
-	output			VGA_VS;					//	VGA V_SYNC
-	output			VGA_BLANK_N;				//	VGA BLANK
-	output			VGA_SYNC_N;				//	VGA SYNC
-	output	[9:0]	VGA_R;   				//	VGA Red[9:0]
-	output	[9:0]	VGA_G;	 				//	VGA Green[9:0]
-	output	[9:0]	VGA_B;   				//	VGA Blue[9:0]
+	output [6:0] HEX0, HEX2, HEX4, HEX5;
 	
 	wire [7:0] score;
 	wire [17:0] mvmt;
@@ -40,7 +18,17 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT,
 	wire [3:0] lives;
 	reg mouseMVMT;
 	
-	always @(posedge CLOCK_50)
+	wire clk;
+	wire [3:0] current_state;
+	
+	RateDivider clock2(
+		.in(26'd50000000 - 1'b1),
+		.clockIn(CLOCK_50),
+		.reset(reset_n),
+		.clockOut(clk)
+	);
+	
+	always @(posedge clk)
 	begin
 		if (~SW[9])
 			begin
@@ -60,29 +48,9 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT,
 	wire [2:0] colour;
 	wire write;
 	
-	vga_adapter VGA(
-			.resetn(SW[9]),
-			.clock(CLOCK_50),
-			.colour(colour),
-			.x(x),
-			.y(y),
-			.plot(write),
-			.VGA_R(VGA_R),
-			.VGA_G(VGA_G),
-			.VGA_B(VGA_B),
-			.VGA_HS(VGA_HS),
-			.VGA_VS(VGA_VS),
-			.VGA_BLANK(VGA_BLANK_N),
-			.VGA_SYNC(VGA_SYNC_N),
-			.VGA_CLK(VGA_CLK));
-		defparam VGA.RESOLUTION = "160x120";
-		defparam VGA.MONOCHROME = "FALSE";
-		defparam VGA.BITS_PER_COLOUR_CHANNEL = 1;
-		defparam VGA.BACKGROUND_IMAGE = "black.mif";
-	
-	
 	top Game(
-		.inputs({SW[3],SW[2],SW[1],SW[0]}),
+		.current_state(current_state),
+		.inputs({SW[1],SW[0],~KEY[3],~KEY[2]}),
 		.go(~KEY[0]),
 		.clk(CLOCK_50),
 		.reset_n(SW[9]),
@@ -92,7 +60,9 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT,
 		.y(y),
 		.flash(LEDR[9:8]),
 		.write(write),
-		.colour(colour)
+		.colour(colour),
+		.prompts(LEDR[2:0]),
+		.c(LEDR[5])
 	);
 	
 	mouse_tracker mouse(
@@ -108,6 +78,11 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT,
 		.out(HEX0)
 	);
 	
+	HexDecoder H2(
+		.in(current_state),
+		.out(HEX2)
+	);
+	
 	HexDecoder H4(
 		.in(score[3:0]),
 		.out(HEX4)
@@ -120,7 +95,7 @@ module game(SW,KEY,LEDR,HEX0,HEX4,HEX5,CLOCK_50,AUD_ADCDAT,
 endmodule
 
 
-module top(inputs,go,clk,reset_n,curr_score,curr_lives,x,y,flash,write,colour);
+module top(current_state,inputs,go,clk,reset_n,curr_score,curr_lives,x,y,flash,write,colour,prompts,c);
 	input [3:0] inputs;
 	input go;
 	input clk;
@@ -134,16 +109,20 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,x,y,flash,write,colour);
 	output [2:0] colour;
 	
 	wire [99:0] user_string, comp_string;
-	wire start_display, add_to_string, reset_IO, display_done, done_string, zero_done;
+	wire start_display, add_to_string, reset_IO, display_done, done_string, zero_done, set;
 	wire ld_lives, ld_score, ld_alu_out, clk2;
 	wire [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
 	assign flash[0] = display_done;
 	
 	wire [15:0] position;
-	wire [2:0] colour, prompts;
+	wire [2:0] colour;
+	output [2:0] prompts;
 	reg promptChange;
 	reg [2:0] mem;
+	output [3:0] current_state;
+	output c;
+	assign c = user_string == comp_string;
 	
 	always @(posedge clk)
 	begin
@@ -168,6 +147,7 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,x,y,flash,write,colour);
 		.clockOut(clk2)
 	);
 	control c0(
+		.current_state(current_state),
 		.go(go),
 		.display_done(display_done),
 		.zero_done(zero_done),
@@ -183,7 +163,8 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,x,y,flash,write,colour);
 		.ld_score(ld_score),
 		.alu_sel_a(alu_sel_a),
 		.alu_sel_b(alu_sel_b),
-		.alu_func(alu_func)
+		.alu_func(alu_func),
+		.set(set)
 	);
 	InputModule UserInput(
 		.toggle(inputs[0]),
@@ -235,11 +216,12 @@ module top(inputs,go,clk,reset_n,curr_score,curr_lives,x,y,flash,write,colour);
 		.alu_sel_b(alu_sel_b),
 		.alu_func(alu_func),
 		.clock(clk2),
-		.reset(reset_n)
+		.reset(reset_n),
+		.set(set)
 	);
 endmodule
 
-module control(go,display_done,zero_done,string_done,no_lives,check,clock,reset,display,generate_string,reset_user,ld_lives,ld_score,alu_sel_a,alu_sel_b,alu_func);
+module control(current_state, go,display_done,zero_done,string_done,no_lives,check,clock,reset,display,generate_string,reset_user,ld_lives,ld_score,alu_sel_a,alu_sel_b,alu_func,set);
 	input go;
 	input display_done;
 	input zero_done;
@@ -249,10 +231,11 @@ module control(go,display_done,zero_done,string_done,no_lives,check,clock,reset,
 	input clock;
 	input reset;
 	
-	output reg display,ld_lives,ld_score, generate_string, reset_user;
+	output reg display,ld_lives,ld_score, generate_string, reset_user, set;
 	output reg [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
-	reg [3:0] current_state, next_state;
+	output reg [3:0] current_state;
+	reg [3:0] next_state;
 	
 	localparam 
 	START = 4'd0,
@@ -304,24 +287,31 @@ module control(go,display_done,zero_done,string_done,no_lives,check,clock,reset,
 		alu_sel_a = 2'd3;
 		alu_sel_b = 2'd3;
 		alu_func = 2'd3;
+		set = 1'b0;
 		generate_string = 1'b0;
 		reset_user = 1'b1;
 		
 		case(current_state)
-			NEXT_LEVEL : generate_string = 1'b1;
-			DISPLAY : display = 1'b1;
-			SCORE_INCREMENT: 
-			begin
-				alu_sel_a = 2'd1; alu_func = 2'd0;
-				ld_score = 1'b1; 
-				reset_user = 1'b0;
-			end
-			LIFE_DECREMENT: 
-			begin
-				alu_sel_a = 2'd0; alu_func = 2'd1;
+			START_WAIT: begin
+				ld_score = 1'b1;
 				ld_lives = 1'b1;
-				reset_user = 1'b0;
 			end
+			NEXT_LEVEL : generate_string = 1'b1;
+			DISPLAY : 
+				begin
+					display = 1'b1;
+					reset_user = 1'b0;
+				end
+			SCORE_INCREMENT: 
+				begin
+					set = 1'b1; ld_score = 1'b1;
+					alu_sel_a = 2'd1; alu_func = 2'd0; 
+				end
+			LIFE_DECREMENT: 
+				begin
+					set = 1'b1; ld_lives = 1'b1;
+					alu_sel_a = 2'd0; alu_func = 2'd1;
+				end
 		endcase
 	end
 endmodule
@@ -376,7 +366,7 @@ module DisplayModule(bstring,go,clock,reset,out,done,zero_done);
 	input reset;
 	
 	output reg [2:0] out;
-	output reg done;
+	output done;
 	output zero_done;
 	
 	wire clk,start;
@@ -387,33 +377,29 @@ module DisplayModule(bstring,go,clock,reset,out,done,zero_done);
 	RateDivider Hz2(26'd50000000 - 1'b1,clock,reset,clk);
 	OutputRegister MSBit(outstring,start,clk,(reset | start),displayBits);
 	assign zero_done = start;
+	assign done = ~(|displayBits);
 		
-	always @(posedge clk)
+	always @(posedge clock)
 	begin
 		if (displayBits == 5'b10000)
 			begin
 				out = 3'b001;
-				done = 1'b0;
 			end
 		else if (displayBits == 5'b11000)
 			begin
 				out = 3'b010;
-				done = 1'b0;
 			end
 		else if (displayBits == 5'b11100)
 			begin
 				out = 3'b011;
-				done = 1'b0;
 			end
 		else if (displayBits == 5'b11110)
 			begin
 				out = 3'b100;
-				done = 1'b0;
 			end
 		else 
 			begin
 				out = 3'b000;
-				done = 1'b1;
 			end
 	end
 endmodule
@@ -460,12 +446,14 @@ module NoLeadingZeroRegister(in,start,clock,reset,out,trigger);
 	
 	always @(posedge clock)
 	begin
-		if (~reset | (~start & mem))
+		if (~reset)
 			begin
 				out <= 100'd0;
 				trigger <= 1'b0;
 				mem <= 1'b0;
 			end
+		else if (~start & mem)
+				trigger <= 1'b0;
 		else if (start & ~mem)
 			begin
 				out <= in;
@@ -516,22 +504,22 @@ module StringGenerator(inc,clock,reset,out,indicate);
 				out <= 100'd0;
 				toggle <= 1'b0;
 			end
-		else if (num == 2'd0)
+		else if (num == 2'd1)
 			begin
-				out <= (num << 3'd5) + 5'b10000;
+				out <= (out << 3'd5) + 5'b10000;
 				toggle <= ~toggle;
 			end
-		else if (num == 2'd1)
+		else if (num == 2'd0)
 			begin
 				out <= (out << 3'd5) + 5'b11000;
 				toggle <= ~toggle;
 			end
-		else if (num == 2'd2)
+		else if (num == 2'd3)
 			begin
 				out <= (out << 3'd5) + 5'b11100;
 				toggle <= ~toggle;
 			end
-		else if (num == 2'd3)
+		else if (num == 2'd2)
 			begin
 				out <= (out << 3'd5) + 5'b11110;
 				toggle <= ~toggle;
@@ -581,19 +569,19 @@ module InputModule(toggle,push,mic,mouse,clock,reset,out,indicate);
 			begin
 				out <= 100'd0;
 			end
-		else if (input1)
+		else if (toggle)
 			begin
 				out <= (out << 3'd5) + 5'b10000;
 			end
-		else if (input2)
+		else if (push)
 			begin
 				out <= (out << 3'd5) + 5'b11000;
 			end
-		else if (input3)
+		else if (mic)
 			begin
 				out <= (out << 3'd5) + 5'b11100;
 			end
-		else if (input4)
+		else if (mouse)
 			begin
 				out <= (out << 3'd5) + 5'b11110;
 			end
@@ -634,8 +622,8 @@ module InputListener(toggle,clock,reset,out);
 	end
 endmodule
 
-module datapath(score,lives,ld_score,ld_lives,ld_alu_out,alu_sel_a,alu_sel_b,alu_func,clock,reset);
-	input ld_score, ld_lives, ld_alu_out, clock, reset;
+module datapath(score,lives,ld_score,ld_lives,ld_alu_out,alu_sel_a,alu_sel_b,alu_func,clock,reset,set);
+	input ld_score, ld_lives, ld_alu_out, clock, reset, set;
 	input [1:0] alu_sel_a, alu_sel_b, alu_func;
 	
 	output reg [3:0] lives;
@@ -653,9 +641,9 @@ module datapath(score,lives,ld_score,ld_lives,ld_alu_out,alu_sel_a,alu_sel_b,alu
 		else
 		begin
 			if (ld_score)
-				score <= alu_out;
+				score <= set ? alu_out : 8'd0;
 			if (ld_lives)
-				lives <= alu_out[3:0];
+				lives <= set ? alu_out[3:0] : 4'd3;
 		end
 	end
 	
